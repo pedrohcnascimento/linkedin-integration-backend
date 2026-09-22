@@ -1,0 +1,57 @@
+# --- Build ---
+target/
+build/
+out/
+*.class
+
+# --- Maven ---
+.mvn/wrapper/maven-wrapper.jar
+!.mvn/wrapper/maven-wrapper.properties
+
+# --- IDE ---
+.idea/
+*.iml
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+.factorypath
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Segredos e configuração local (NUNCA versionar) ---
+.env
+.env.*
+!.env.example
+application-local.yml
+application-local.yaml
+application-secrets.yml
+*.pem
+*.p12
+*.jks
+*secret*
+*credentials*
+
+# --- Banco de dados local (SQLite) ---
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-shm
+*.db-wal
+data/
+
+# --- Testes / cobertura ---
+.jacoco/
+jacoco.exec
+coverage/
+
+# --- Docker ---
+docker-compose.override.yml
