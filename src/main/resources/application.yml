@@ -1,29 +1,23 @@
-spring:
+﻿spring:
   application:
     name: linkedin-integration-backend
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
 
   datasource:
-    url: "${DATABASE_URL:jdbc:sqlite:./data/linkedinagent-local.db}"
     driver-class-name: org.sqlite.JDBC
-    username: ${DATABASE_USERNAME:}
-    password: ${DATABASE_PASSWORD:}
     hikari:
-      # SQLite só permite um escritor por vez; um pool pequeno evita "database is locked".
       maximum-pool-size: 1
 
   jpa:
     open-in-view: false
     database-platform: org.hibernate.community.dialect.SQLiteDialect
     hibernate:
-      # NUNCA usar "update" em produção (ver docs/planejamento-tecnico.md, seção 6.3).
-      # "validate" é seguro mesmo sem entidades ainda (Passo 6 as introduz).
       ddl-auto: validate
 
   flyway:
     enabled: true
     locations: classpath:db/migration
-    # Ainda não há migrations (chegam no Passo 6) — a pasta existe só para o Flyway
-    # conseguir resolver a location sem erro.
 
 server:
   port: 8080
@@ -32,8 +26,6 @@ management:
   endpoints:
     web:
       exposure:
-        # Expor só o necessário. Métricas e outros endpoints entram no Passo 14
-        # (observabilidade), avaliados um a um.
         include: health
   endpoint:
     health:

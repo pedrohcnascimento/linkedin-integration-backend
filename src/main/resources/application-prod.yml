@@ -1,0 +1,39 @@
+# Perfil de Produção
+# Em produção, exigimos que as variáveis de ambiente sejam fornecidas pelo ambiente.
+# Sem defaults de fallback para senhas ou segredos (vão falhar se ausentes, o que é o esperado).
+
+spring:
+  datasource:
+    # URL do banco de dados (ex: jdbc:postgresql://...)
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+    
+    # HikariCP configurações para produção
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  jpa:
+    hibernate:
+      # NUNCA usar update em prod
+      ddl-auto: validate
+    show-sql: false
+
+# Segurança e Integração
+app:
+  linkedin:
+    client-id: ${LINKEDIN_CLIENT_ID}
+    client-secret: ${LINKEDIN_CLIENT_SECRET}
+    redirect-uri: ${LINKEDIN_REDIRECT_URI}
+  security:
+    token-encryption-key: ${TOKEN_ENCRYPTION_KEY}
+    cors-allowed-origins: ${CORS_ALLOWED_ORIGINS}
+  base-url: ${APP_BASE_URL}
+
+logging:
+  level:
+    root: INFO
+    com.example.linkedinagent: INFO
+    org.springframework.web: WARN
+    org.hibernate: WARN

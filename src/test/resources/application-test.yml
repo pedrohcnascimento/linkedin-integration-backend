@@ -3,8 +3,6 @@ spring:
     url: "jdbc:sqlite::memory:"
     driver-class-name: org.sqlite.JDBC
     hikari:
-      # Uma única conexão garante que o banco em memória (que existe por conexão)
-      # seja compartilhado por toda a suíte de testes.
       maximum-pool-size: 1
 
   jpa:
@@ -13,3 +11,14 @@ spring:
 
   flyway:
     enabled: true
+
+# Configurações mockadas para ambiente de testes
+app:
+  linkedin:
+    client-id: "test-client-id"
+    client-secret: "test-client-secret"
+    redirect-uri: "http://localhost:8080/api/v1/linkedin/oauth/callback"
+  security:
+    token-encryption-key: "test-encryption-key-which-is-at-least-32-chars-long"
+    cors-allowed-origins: "http://localhost:5173"
+  base-url: "http://localhost:8080"

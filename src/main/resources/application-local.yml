@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    # Default database URL for local environment
+    url: ${DATABASE_URL:jdbc:sqlite:./data/linkedinagent-local.db}
+
+app:
+  linkedin:
+    # Em local, os segredos podem estar vazios por padrao para não quebrar o startup 
+    # antes do dev configurar o .env
+    client-id: ${LINKEDIN_CLIENT_ID:}
+    client-secret: ${LINKEDIN_CLIENT_SECRET:}
+    redirect-uri: ${LINKEDIN_REDIRECT_URI:http://localhost:8080/api/v1/linkedin/oauth/callback}
+  security:
+    token-encryption-key: ${TOKEN_ENCRYPTION_KEY:}
+    cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  base-url: ${APP_BASE_URL:http://localhost:8080}
