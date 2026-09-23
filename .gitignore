@@ -46,7 +46,8 @@ application-secrets.yml
 *.db-journal
 *.db-shm
 *.db-wal
-data/
+data/*
+!data/.gitkeep
 
 # --- Testes / cobertura ---
 .jacoco/

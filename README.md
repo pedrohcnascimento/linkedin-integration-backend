@@ -6,7 +6,9 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-🚧 **Passo 1 do roteiro operacional concluído** — estrutura documental do repositório. Nenhum código de domínio foi escrito ainda.
+🚧 **Passo 4 do roteiro operacional concluído** — esqueleto Spring Boot que sobe, com health check e teste de contexto. Ainda sem entidades, sem OAuth, sem publicação — isso vem nos próximos passos.
+
+⚠️ **Este esqueleto foi escrito, mas não compilado**, por uma limitação do ambiente onde foi gerado (sem acesso ao Maven Central). Ao abrir o projeto localmente, rode `mvn clean test` (ou o botão de build do IntelliJ) e reporte qualquer erro — os pontos de maior risco estão documentados em [`docs/progress/STEP-04.md`](docs/progress/STEP-04.md).
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) (um arquivo `STEP-XX.md` por etapa concluída) e o roteiro completo em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
@@ -16,11 +18,14 @@ Acompanhe o progresso em [`docs/progress/`](docs/progress) (um arquivo `STEP-XX.
 |---|---|
 | Linguagem | Java 21 (LTS) |
 | Build | Maven |
-| Framework | Spring Boot (Web, Security quando necessário, Validation, Actuator) |
-| Persistência | SQLite (dev) → PostgreSQL (futuro), via JPA/Hibernate + migrations versionadas |
-| Autenticação externa | OAuth 2.0 com o LinkedIn |
-| Documentação de API | springdoc-openapi |
+| Framework | Spring Boot **4.1.0** (Webmvc, Security quando necessário, Validation, Actuator) |
+| Persistência | SQLite (dev) → PostgreSQL (futuro), via JPA/Hibernate 7 + Flyway |
+| Autenticação externa | OAuth 2.0 + OpenID Connect com o LinkedIn |
+| Publicação | LinkedIn **Posts API** (`/rest/posts`) — ver `docs/linkedin-capability-matrix.md` |
+| Documentação de API | springdoc-openapi 3.x |
 | Empacotamento | Docker |
+
+> Nota de versão: o projeto usa Spring Boot 4.x porque a linha 3.5.x encerrou o suporte OSS em 25/06/2026. O Boot 4 trouxe starters modulares (`spring-boot-starter-webmvc` no lugar de `spring-boot-starter-web`, por exemplo) — se for comparar com tutoriais mais antigos, tenha isso em mente.
 
 ## O que este projeto faz (v1)
 
@@ -54,18 +59,21 @@ com.example.linkedinagent
 └── shared
 ```
 
-## Como rodar (quando o código existir)
+## Como rodar
+
+Este repositório **não inclui o Maven Wrapper** (`mvnw`/`mvnw.cmd`) ainda — gerado no ambiente onde o código foi escrito, sem acesso ao Maven Central para validá-lo. Use o Maven do seu sistema ou o integrado ao IntelliJ:
 
 ```bash
-# build
-./mvnw clean install
+# build + testes
+mvn clean test
 
-# subir localmente (perfil "local")
-./mvnw spring-boot:run -Dspring-boot.run.profiles=local
-
-# rodar os testes
-./mvnw test
+# subir localmente
+mvn spring-boot:run
 ```
+
+No IntelliJ: abra o projeto como Maven (`pom.xml`), deixe indexar as dependências, e rode `LinkedinAgentApplication` ou a suíte de testes pela própria IDE.
+
+Depois de validar que builda, você pode gerar o wrapper com `mvn -N wrapper:wrapper` (ou `mvn wrapper:wrapper` na raiz) para passar a usar `./mvnw` — mais consistente entre máquinas.
 
 Variáveis de ambiente necessárias (ver `.env.example` quando criado no Passo 5):
 
