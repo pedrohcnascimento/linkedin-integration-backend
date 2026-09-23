@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: "jdbc:sqlite::memory:"
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      # Uma única conexão garante que o banco em memória (que existe por conexão)
+      # seja compartilhado por toda a suíte de testes.
+      maximum-pool-size: 1
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+  flyway:
+    enabled: true
