@@ -6,9 +6,9 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-🚧 **Passo 8 implementado e validado por testes automatizados** — conexão/desconexão LinkedIn via OAuth, tokens cifrados, isolamento por usuário e rate limiting para autenticação/OAuth. App real, smoke test e validação no JDK 21 seguem pendentes antes de produção; publicação e demais recursos de negócio estão fora do passo atual.
+🚧 **Etapa atual: Passo 8 — ciclo OAuth com o LinkedIn**, implementado e validado por testes automatizados. O código oferece identidade local, sessões e conexão/desconexão LinkedIn; ainda não implementa funcionalidades de publicação, rascunhos, histórico ou oportunidades. A validação com o app real no Developer Portal, smoke test e validação no JDK 21 seguem pendentes. Ver [`docs/progress/STEP-08.md`](docs/progress/STEP-08.md).
 
-Acompanhe o progresso em [`docs/progress/`](docs/progress) (um arquivo `STEP-XX.md` por etapa concluída) e o roteiro completo em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
+Acompanhe o progresso em [`docs/progress/`](docs/progress) e o roteiro, incluindo os próximos passos, em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
 ## Stack técnica
 
@@ -19,28 +19,62 @@ Acompanhe o progresso em [`docs/progress/`](docs/progress) (um arquivo `STEP-XX.
 | Framework | Spring Boot **4.1.0** (Webmvc, Security, Validation, Actuator) |
 | Persistência | SQLite (local/testes) e PostgreSQL (produção), via JPA/Hibernate 7 + Flyway |
 | Autenticação externa | OAuth 2.0 + OpenID Connect com o LinkedIn |
-| Publicação | LinkedIn **Posts API** (`/rest/posts`) — ver `docs/linkedin-capability-matrix.md` |
+| LinkedIn | OAuth 2.0 e consulta de conexão implementados; publicação via **Posts API** planejada, ainda não implementada |
 | Documentação de API | springdoc-openapi 3.x |
 | Empacotamento | JAR executável (Spring Boot) |
 
 > Nota de versão: o projeto usa Spring Boot 4.x porque a linha 3.5.x encerrou o suporte OSS em 25/06/2026. O Boot 4 trouxe starters modulares (`spring-boot-starter-webmvc` no lugar de `spring-boot-starter-web`, por exemplo) — se for comparar com tutoriais mais antigos, tenha isso em mente.
 
-## O que este projeto faz (v1)
+## Estado funcional
 
-- Permite que vários usuários criem contas locais e autentiquem-se em sessões independentes
-- Conecta a conta do LinkedIn do usuário via OAuth 2.0
-- Cria e revisa rascunhos de publicação
-- Publica texto e URLs no LinkedIn em nome do usuário, mediante aprovação explícita (produto **Share on LinkedIn**, escopo `w_member_social`)
-- Mantém histórico local de publicações, com idempotência
-- Permite registrar e organizar oportunidades de vaga **manualmente ou de fontes autorizadas** — sem buscar, salvar ou se candidatar automaticamente dentro do LinkedIn
+### Implementado
 
-## O que este projeto deliberadamente não faz
+- Cadastro de contas locais, login por sessão, consulta do usuário autenticado e logout.
+- Token CSRF para requisições que alteram estado.
+- Conexão LinkedIn via OAuth 2.0, consulta sanitizada do estado da conexão e desconexão local. Tokens são cifrados em repouso e não são devolvidos pela API.
+- Rate limiting para autenticação e endpoints OAuth.
+
+Essas funcionalidades são expostas pelos endpoints listados abaixo e cobertas por testes automatizados. O fluxo OAuth ainda não foi validado contra um app real no Developer Portal.
+
+### Planejado, ainda não implementado
+
+- Adaptador para publicação usando a Posts API oficial.
+- Casos de uso e endpoints para criar/revisar rascunhos, aprovar e publicar conteúdo, com histórico e idempotência.
+- Registro e organização local de oportunidades de vaga.
+
+As tabelas ou migrations preliminares existentes não significam que esses recursos estejam executáveis. **Não existem endpoints de rascunhos, publicações/histórico ou oportunidades**; os caminhos desses futuros endpoints ainda não estão definidos.
+
+### Fora do escopo
 
 - Não automatiza login, navegação ou cliques no LinkedIn
 - Não usa cookies de sessão do LinkedIn
 - Não faz scraping de perfis, vagas ou resultados de busca
 - Não envia convites, mensagens ou candidaturas automaticamente
 - Não usa Easy Apply de forma automatizada
+
+## Endpoints disponíveis
+
+Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem sessão local; requisições que alteram estado também exigem CSRF.
+
+| Método e caminho | Acesso | Função |
+|---|---|---|
+| `GET /api/v1/auth/csrf` | Público | Obtém o token CSRF e o nome do header |
+| `POST /api/v1/auth/register` | Público | Cria uma conta local |
+| `POST /api/v1/auth/login` | Público | Autentica e inicia uma sessão |
+| `POST /api/v1/auth/logout` | Sessão + CSRF | Encerra a sessão (`204`) |
+| `GET /api/v1/users/me` | Sessão | Consulta a conta autenticada |
+| `GET /api/v1/linkedin/oauth/start` | Sessão | Inicia o fluxo OAuth e redireciona ao LinkedIn |
+| `GET /api/v1/linkedin/oauth/callback` | Público, protegido por `state` de uso único | Conclui o OAuth e retorna estado sanitizado |
+| `GET /api/v1/linkedin/connection` | Sessão | Consulta o estado da conexão LinkedIn |
+| `DELETE /api/v1/linkedin/connection` | Sessão + CSRF | Remove a autorização local (`204`) |
+
+`GET /actuator/health` também está disponível para health check. A documentação interativa da API fica em `/swagger-ui.html` e o OpenAPI em `/api-docs`.
+
+## Próximos passos
+
+1. Validar o ciclo OAuth com o app configurado no Developer Portal e executar smoke test; validar também com JDK 21 e, antes de exposição pública, Redis distribuído e IP confiável no proxy.
+2. Seguir o planejamento: adaptador de publicação (Passo 9), rascunhos/aprovação/idempotência (Passo 10) e oportunidades locais (Passo 11).
+3. Completar endpoints e contrato OpenAPI, testes, segurança e observabilidade conforme os Passos 12–14. Nenhum desses itens deve ser considerado disponível até estar implementado e testado.
 
 ## Arquitetura
 
@@ -130,28 +164,16 @@ Para exercitar o armazenamento distribuído, configure `RATE_LIMIT_REDIS_TEST_UR
 
 ### Autenticação local
 
-- `GET /api/v1/auth/csrf` retorna o header e o token CSRF necessários às requisições que alteram estado.
-- `POST /api/v1/auth/register` cria uma conta com `email`, `displayName` e senha (mínimo de 12 caracteres).
-- `POST /api/v1/auth/login` recebe `email` e `password`, cria uma sessão HTTP e retorna o usuário autenticado.
-- `GET /api/v1/users/me` retorna a conta associada à sessão atual.
-- `POST /api/v1/auth/logout` encerra a sessão.
-
 O cliente deve guardar o cookie de sessão com segurança e enviar o token CSRF no header indicado pela rota `/csrf`; tokens de senha nunca são devolvidos pela API. Em produção, a aplicação deve ser publicada exclusivamente por HTTPS.
 
 ### Conexão com o LinkedIn
 
-- `GET /api/v1/linkedin/oauth/start` inicia a autorização e redireciona ao LinkedIn; exige sessão local e configuração OAuth/chave de cifragem válidas.
-- `GET /api/v1/linkedin/oauth/callback` recebe o retorno público do LinkedIn, protegido por `state` de uso único, e devolve JSON sem tokens.
-- `GET /api/v1/linkedin/connection` consulta o estado sanitizado da conexão do usuário autenticado.
-- `DELETE /api/v1/linkedin/connection` desconecta localmente; exige sessão e token CSRF.
-
 O callback está configurado como `http://localhost:8080/api/v1/linkedin/oauth/callback` apenas para desenvolvimento local. Em produção, configure a URI HTTPS exata também no Developer Portal. Os scopes padrão são `openid profile w_member_social`; os scopes efetivamente concedidos dependem dos produtos habilitados no app. Nenhum teste automatizado chama o LinkedIn real. A desconexão remove credenciais locais, mas não afirma revogação remota.
 
-## Limitações conhecidas (v1)
+## Limitações atuais
 
-- Sem refresh token presumido — depende do que o LinkedIn efetivamente conceder para o app registrado
-- Sem agendamento nativo no LinkedIn — se existir agendamento, é responsabilidade da aplicação
-- Vagas são só um registro local; não há integração automatizada de busca/candidatura
+- Publicação, rascunhos, histórico e oportunidades ainda não têm casos de uso nem endpoints funcionais.
+- Não há refresh token presumido — depende do que o LinkedIn efetivamente conceder para o app registrado.
 - O perfil PostgreSQL de produção está configurado; antes do deploy, valide as migrations e o schema em um PostgreSQL de teste compatível com a versão do serviço.
 
 ## Contribuindo
