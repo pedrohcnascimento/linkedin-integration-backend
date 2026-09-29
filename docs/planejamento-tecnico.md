@@ -1,7 +1,7 @@
 # Planejamento técnico — Backend para integração autorizada com o LinkedIn
 
 **Versão:** 1.0 — planejamento inicial
-**Status:** documento de arquitetura; nenhum código implementado (ver `docs/progress/` para o estado real)
+**Status:** documento de arquitetura e roteiro; o estado implementado e os próximos critérios estão registrados em `docs/progress/`.
 **Tecnologias obrigatórias:** Java 21, Spring Boot, Spring Web, Spring Security quando necessário, Maven, SQLite, JPA/Hibernate, JDBC subjacente, APIs RESTful, OAuth 2.0 e Docker quando aplicável.
 
 > Este arquivo é a fonte de verdade **arquitetural** do projeto. Qualquer pessoa ou agente de IA que for alterar o repositório deve lê-lo por completo antes de programar.
@@ -12,7 +12,7 @@
 
 A primeira versão deve ser um backend próprio, modular e orientado a uma integração autorizada com o LinkedIn. O sistema **não** deve automatizar a navegação no site, coletar dados por scraping, usar cookies de sessão nem imitar cliques do usuário. Essas práticas são proibidas ou arriscadas segundo o Contrato do Usuário e a documentação de software proibido do LinkedIn.
 
-A integração inicial deve priorizar o produto **Share on LinkedIn**. A permissão aberta `w_member_social` permite criar publicações em nome do membro autenticado, via `POST https://api.linkedin.com/v2/ugcPosts`. A aplicação deve tratar a publicação como uma operação explicitamente autorizada pelo usuário, com registro local e idempotência.
+A integração inicial deve priorizar o produto **Share on LinkedIn**. A permissão aberta `w_member_social` permite criar publicações em nome do membro autenticado. Conforme a decisão registrada na matriz de capacidades, o adaptador futuro usará a Posts API (`POST https://api.linkedin.com/rest/posts`), não o endpoint UGC legado. A aplicação deve tratar a publicação como uma operação explicitamente autorizada pelo usuário, com registro local e idempotência.
 
 Busca, salvamento e candidatura a vagas **não** devem ser automatizadas dentro do LinkedIn na primeira versão — não há permissão aberta documentada para isso, e o LinkedIn limita o Easy Apply para conter bots. O sistema pode manter uma lista própria de oportunidades obtidas de fontes autorizadas, com revisão e abertura de links manual pelo usuário.
 
@@ -56,7 +56,7 @@ Não devem ser implementados sem documentação e aprovação específicas do Li
 | Funcionalidade | Produto/endpoint | Permissão | Aprovação especial | Limitação arquitetural |
 |---|---|---|---|---|
 | Autenticar o membro | OAuth 2.0 do LinkedIn | Escopos solicitados pelo app | App precisa estar registrado e autorizado pelo membro | Backend deve validar `state`, redirecionamento e troca segura do código |
-| Criar publicação | Share on LinkedIn; `POST /v2/ugcPosts` | `w_member_social` | Classificada como permissão aberta; requer configurar o produto no Developer Portal | Publicação imediata quando `lifecycleState=PUBLISHED`; agendamento é responsabilidade da aplicação |
+| Criar publicação | Share on LinkedIn; `POST /rest/posts` | `w_member_social` | Classificada como permissão aberta; requer configurar o produto no Developer Portal | Publicação imediata quando `lifecycleState=PUBLISHED`; agendamento é responsabilidade da aplicação. Usar `Linkedin-Version` conforme a decisão registrada na matriz |
 | Publicar texto | Share on LinkedIn | `w_member_social` | Não indicada aprovação de parceiro | Corpo deve usar o formato oficial e visibilidade aceita pela API |
 | Compartilhar URL | Share on LinkedIn | `w_member_social` | Não indicada aprovação de parceiro | URL e metadados no formato documentado |
 | Publicar imagem/vídeo | Share on LinkedIn | `w_member_social` | Confirmar requisitos de upload no momento da implementação | Registrar e enviar mídia antes de criar a publicação |
@@ -398,8 +398,14 @@ O agente **não deve avançar automaticamente** quando um teste falhar, uma migr
 **Entregáveis:** cadastro, login, logout e consulta do usuário autenticado; migration aditiva de credenciais; proteção das rotas privadas e testes de isolamento/autenticação.
 
 ### Passo 8 — Implementar o ciclo OAuth com o LinkedIn
-**Objetivo:** conectar/desconectar um membro via OAuth 2.0 sem expor credenciais.
-**Instrução:** não enviar token ao frontend; não presumir refresh token.
+**Objetivo:** conectar e desconectar a conta LinkedIn do usuário local autenticado por Authorization Code Flow, sem expor credenciais ou tokens ao cliente.
+**Pré-requisitos:** Passo 7 concluído; aplicação LinkedIn configurada com os produtos e escopos necessários; callback cadastrado e idêntico a `LINKEDIN_REDIRECT_URI`; variáveis e chave de cifragem disponíveis; referências oficiais de OAuth/OIDC e UserInfo revalidadas imediatamente antes de implementar.
+**Escopo:** início autenticado do fluxo; geração, persistência por hash, expiração e consumo atômico de `state`; tratamento do callback e de recusas do provedor; troca de código no backend; consulta mínima de identidade via UserInfo; associação à conta local que iniciou o fluxo; armazenamento cifrado da autorização; consulta sanitizada do estado da conexão; desconexão local; tratamento de expiração e falhas externas.
+**Restrições:** callback nunca aceita identidade de usuário fornecida pelo cliente; código, `state`, access token e eventual refresh token não aparecem em logs ou respostas; tokens são cifrados antes de persistir; não presumir nem implementar refresh ou revogação remota sem confirmação oficial; não adicionar publicação, rascunhos, mídia ou chamadas da Posts API neste passo.
+**Persistência:** avaliar primeiro as tabelas/entidades `oauth_transaction` e `linkedin_authorization` existentes; nunca reescrever V1/V2. Criar migration aditiva somente se uma lacuna necessária for demonstrada.
+**Testes:** unitários para `state`, expiração/uso único, cifragem e lógica de conexão; integração com HTTP do LinkedIn simulado, SQLite e MockMvc para sucesso, recusa, erros, replay, expiração, isolamento por usuário e ausência de segredos nas respostas; nenhum teste depende de credenciais ou rede reais.
+**Decisões a registrar antes da codificação:** comportamento ao conectar uma conta já conectada; comportamento seguro de desconexão local e suporte (ou ausência) à revogação remota; resposta/redirect de sucesso e erro do callback; escopos exatos disponíveis no app; formato e validação da chave de cifragem.
+**Critério de conclusão:** roteiro completo coberto por testes determinísticos; migração aditiva validada em banco limpo e existente quando aplicável; `mvn test` passa; fluxo manual opcional só é executado com credenciais de desenvolvimento configuradas localmente e nunca compartilhadas.
 
 ### Passo 9 — Implementar o adaptador de publicação
 **Objetivo:** encapsular toda comunicação de publicação com o LinkedIn.

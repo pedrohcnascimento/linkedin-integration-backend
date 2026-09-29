@@ -34,4 +34,4 @@ Executar toda a suíte com `mvn test`. Funcionalidades planejadas ainda sem impl
 
 ## Próximo passo
 
-**Passo 8 — Implementar o ciclo OAuth com o LinkedIn**, associando cada autorização ao usuário da sessão autenticada e sem enviar tokens do LinkedIn ao cliente.
+**Passo 8 — Planejar e, após validar as decisões registradas, implementar o ciclo OAuth com o LinkedIn.** O escopo e os critérios prévios estão em [`STEP-08-PLAN.md`](STEP-08-PLAN.md); a implementação deve associar cada autorização ao usuário da sessão autenticada sem enviar tokens ao cliente.
