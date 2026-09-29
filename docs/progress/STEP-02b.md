@@ -1,5 +1,7 @@
 # STEP-02b — Decisão: Posts API vs. UGC Post API
 
+> **Registro histórico da decisão.** A decisão abaixo continua vigente: Posts API será usada na implementação futura. Consulte a [matriz de capacidades](../linkedin-capability-matrix.md) para o contrato técnico e [`docs/status-atual.md`](../status-atual.md) para o estado consolidado.
+
 **Contexto:** o Passo 2 identificou uma divergência entre o planejamento original (`POST /v2/ugcPosts`) e o estado atual da documentação oficial do LinkedIn (Posts API como superfície ativamente mantida). Conforme a regra do projeto, a decisão foi levada ao proprietário em vez de resolvida unilateralmente.
 
 ## Decisão

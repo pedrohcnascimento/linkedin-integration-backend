@@ -1,5 +1,7 @@
 # STEP-07 — Implementar identidade local e autorização da aplicação
 
+> **Registro histórico da etapa.** Este relatório preserva o estado observado quando foi escrito; não representa o status atual do projeto. Consulte [`docs/status-atual.md`](../status-atual.md) para o estado e as pendências vigentes.
+
 **Objetivo:** permitir múltiplas contas locais e estabelecer autenticação antes da integração com o LinkedIn.
 
 ## Implementação
