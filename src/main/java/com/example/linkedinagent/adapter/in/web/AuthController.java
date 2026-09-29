@@ -26,6 +26,7 @@ import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -114,6 +115,12 @@ public class AuthController {
         }
         return ResponseEntity.badRequest()
                 .body(new ApiError("PASSWORD_TOO_LONG", "Password exceeds the supported UTF-8 byte length."));
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    private ResponseEntity<ApiError> handleInvalidRequest(MethodArgumentNotValidException exception) {
+        return ResponseEntity.badRequest()
+                .body(new ApiError("INVALID_REQUEST", "Request validation failed."));
     }
 
     public record RegisterRequest(
