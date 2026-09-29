@@ -31,6 +31,7 @@ public class AppProperties {
         private String clientId;
         private String clientSecret;
         private String redirectUri;
+        private String scopes = "openid profile w_member_social";
 
         public String getClientId() {
             return clientId;
@@ -54,6 +55,14 @@ public class AppProperties {
 
         public void setRedirectUri(String redirectUri) {
             this.redirectUri = redirectUri;
+        }
+
+        public String getScopes() {
+            return scopes;
+        }
+
+        public void setScopes(String scopes) {
+            this.scopes = scopes;
         }
     }
 

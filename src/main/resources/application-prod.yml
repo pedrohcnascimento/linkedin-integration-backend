@@ -33,6 +33,7 @@ app:
     client-id: ${LINKEDIN_CLIENT_ID}
     client-secret: ${LINKEDIN_CLIENT_SECRET}
     redirect-uri: ${LINKEDIN_REDIRECT_URI}
+    scopes: ${LINKEDIN_SCOPES:openid profile w_member_social}
   security:
     token-encryption-key: ${TOKEN_ENCRYPTION_KEY}
     cors-allowed-origins: ${CORS_ALLOWED_ORIGINS}
