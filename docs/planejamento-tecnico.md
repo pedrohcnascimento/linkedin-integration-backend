@@ -366,36 +366,64 @@ Antes de modificar o projeto:
 O agente **não deve avançar automaticamente** quando um teste falhar, uma migration for destrutiva, uma permissão do LinkedIn estiver indefinida ou uma decisão puder alterar o modelo de segurança. Nesses casos, registrar a dúvida e solicitar decisão antes de continuar.
 
 ### Passo 1 — Criar o repositório e o contrato de trabalho
-**Objetivo:** repositório reproduzível e regras para contribuições futuras (humanas e automatizadas).
-**Ações:** README.md, LICENSE, .gitignore, CONTRIBUTING.md, SECURITY.md e este planejamento; branch principal; versão do Java, ferramenta de build e convenções de commit.
-**Verificação:** um clone limpo contém somente arquivos não sensíveis e explica como executar o projeto, mesmo sem a aplicação existir ainda.
-**Instrução:** não gerar código de domínio nesta etapa.
+**Objetivo:** estabelecer um repositório reproduzível e regras para futuras contribuições humanas e automatizadas, sem implementar regras de domínio.
+**Escopo realizado:** README e visão do produto; licença MIT; `.gitignore`; `CONTRIBUTING.md`; `SECURITY.md`; planejamento técnico; convenções Java 21/Maven, branch e commits; pasta de relatórios de progresso.
+**Adições benéficas:** as instruções para agentes e o checklist de passagem entre etapas tornam explícitos os limites de escopo, revisão, testes, proteção de segredos e necessidade de parar diante de decisões de segurança ou migrations ambíguas.
+**Verificação:** conferir clone limpo, arquivos de configuração e banco local ignorados pelo Git; conferir que `.env.example`, não `.env`, é versionado; README explica a execução disponível no estágio.
+**Estado/pendências:** licença atualmente contém o nome do titular, resolvendo o placeholder registrado historicamente em `STEP-01.md`. Maven Wrapper não foi adicionado; é uma melhoria opcional, não um requisito para considerar o contrato documental concluído. Não adicionar código de domínio retroativamente a esta etapa.
 
 ### Passo 2 — Validar a API e congelar o escopo da v1
-**Objetivo:** transformar a pesquisa da API em decisões implementáveis.
-**Entregáveis:** `docs/linkedin-capability-matrix.md`, lista de escopos permitidos, decisão formal de escopo.
-**Verificação:** cada chamada planejada tem fonte oficial, método HTTP, endpoint, payload, permissão, tratamento de erro e regra de armazenamento.
+**Objetivo:** transformar a pesquisa da API do LinkedIn em decisões implementáveis e impedir que funcionalidades sejam inferidas apenas pela interface do site.
+**Escopo realizado:** matriz `docs/linkedin-capability-matrix.md`, fontes e requisitos para OpenID Connect/UserInfo e Share on LinkedIn, limites de escopos e decisões registradas em `STEP-02.md` e `STEP-02b.md`.
+**Decisão vinculante:** usar Posts API (`POST /rest/posts`) no futuro, em vez da UGC Post API legada; manter `Linkedin-Version` configurável e não presumir refresh token. A matriz é a referência factual para endpoints, versões e capacidades.
+**Adições benéficas:** identidade mínima por OIDC/UserInfo, exclusão explícita de scraping e de operações que exijam outras aprovações, e tratamento defensivo de `429` sem inventar limites numéricos.
+**Verificação:** para cada chamada efetivamente implementada, registrar fonte oficial, verbo/endpoint, escopo, payload, resposta, falhas e retenção. Manter data de consulta e distinção entre fontes primárias e secundárias.
+**Pendência:** a matriz foi produzida em 2026 e deve ser revalidada em fontes oficiais antes dos Passos 8 e 9; disponibilidade listada publicamente não prova que o app específico foi aprovado ou recebeu determinado produto/escopo.
 
 ### Passo 3 — Registrar o aplicativo no LinkedIn sem expor segredos
-**Objetivo:** preparar credenciais de desenvolvimento para OAuth.
-**Entregáveis:** app registrado, variáveis de ambiente documentadas, redirect URI definida.
-**Dependência:** conclusão do Passo 2.
+**Objetivo:** preparar a aplicação de desenvolvimento e seu callback para OAuth sem colocar credenciais no repositório, nos logs ou em mensagens.
+**Ações previstas:** registrar o app no Developer Portal; associar a LinkedIn Page quando exigido; habilitar apenas produtos necessários (Sign In with LinkedIn using OpenID Connect e Share on LinkedIn); configurar a redirect URI exata; guardar client ID/secret somente no ambiente local ou secret manager.
+**Integração com o código existente:** `.env.example` documenta `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`, `LINKEDIN_REDIRECT_URI` e `TOKEN_ENCRYPTION_KEY`; `application-local.yml` fornece defaults de desenvolvimento e a URI local prevista.
+**Segurança/verificação:** redirect URI no portal deve ser byte a byte igual à configuração usada no fluxo; `.env` e bancos locais devem continuar fora do Git; não colar credenciais em issues, logs ou documentação versionada. Smoke test real fica restrito a ambiente próprio autorizado e não substitui os testes automatizados.
+**Estado:** **não comprovado pelos artefatos versionados**. Não existe `STEP-03.md` nem evidência documental de que o app e os produtos foram criados/configurados; variáveis no YAML ou `.env.example` não provam cadastro ou aprovação. Confirmar manualmente no portal antes do Passo 8, sem compartilhar valores secretos. Se essa ação ainda não ocorreu, o Passo 3 continua pendente.
 
 ### Passo 4 — Gerar o esqueleto Spring Boot
-**Objetivo:** base compilável e pequena.
-**Entregáveis:** aplicação que inicia, health check, build configurado, teste de contexto.
-**Instrução:** não usar `ddl-auto=update`; não colocar lógica de integração em controllers.
+**Objetivo:** fornecer uma aplicação pequena, compilável e iniciável, com health check, configuração Maven e teste de contexto, sem lógica de negócio em controller.
+**Escopo realizado:** classe principal mínima, Spring Boot 4.1.0, Java release 21, Maven, starters modulares Boot 4, Actuator, springdoc e perfil de teste; `ddl-auto: validate` em vez de atualização automática.
+**Adições benéficas:** teste de contexto sem credenciais LinkedIn e migrations controladas por Flyway desde cedo; a correção registrada em `STEP-04b.md` colocou a URL SQLite em formato YAML válido.
+**Verificação retrospectiva:** em 29/09/2026 `mvn clean test` concluiu com 21 testes, sem falhas/erros, e `mvn -DskipTests compile` compilou 39 fontes. Assim, a pendência histórica de build em `STEP-04.md` foi posteriormente resolvida. Essa execução usou JDK 25 com `--release 21`; validar também com JDK 21 para corresponder ao ambiente-alvo.
+**Pendência de cobertura:** a aplicação sobe e Actuator expõe `health`, mas a suíte atual não tem teste HTTP explícito do endpoint de health nem execução de uma imagem empacotada. Adicionar/verificar isso antes de declarar esses contratos exercitados; não é bloqueio para o OAuth em si.
+**Ferramentas:** wrapper Maven não está incluído; seu uso é opcional, mas adicioná-lo reduz divergências de versão Maven entre ambientes.
 
 ### Passo 5 — Configurar ambientes e segredos
-**Objetivo:** separar `local`/`test`/`prod` desde o primeiro commit funcional.
+**Objetivo:** separar configurações `local`, `test` e `prod` e tipar as propriedades usadas pela aplicação, sem versionar segredos.
+**Escopo realizado:** `application.yml` base; perfis local/prod/test; `AppProperties`; `VerifyEnvRunner`; `WebConfig`; carregamento de `.env` com spring-dotenv; `.env.example`; CORS restrito por configuração.
+**Adições benéficas posteriores:** cookies de sessão `HttpOnly` e `SameSite=Lax`, `Secure` em produção, e `PRAGMA foreign_keys=ON` em conexões SQLite local/test foram introduzidos com o Passo 7 e estão registrados como requisitos de ambiente relevantes.
+**Verificação:** teste de binding/contexto com perfil test; revisar que todos os defaults são não secretos; testar CORS com origens permitidas e rejeitadas; validar cookies e ausência de fallback para valores sensíveis no perfil prod.
+**Pendências/limites atuais:** `application-prod.yml` referencia credenciais PostgreSQL, mas o projeto atual só declara driver SQLite; o perfil prod não deve ser considerado pronto para implantação até o Passo 12 e não foi validado por estes testes. O teste usa strings fictícias — incluindo uma chave de cifragem de exemplo que ainda não tem contrato binário validado. Antes do OAuth, definir e validar o formato/tamanho real da chave sem inserir um valor real no Git. Conferir também parsing/trim de múltiplas origens CORS e não tratar a configuração local permissiva como configuração de produção.
 
 ### Passo 6 — Criar schema SQLite e migrations
-**Objetivo:** persistência reproduzível antes das regras de negócio.
+**Objetivo:** estabelecer persistência reproduzível, schema versionado e mapeamentos JPA compatíveis com SQLite antes das regras de negócio.
+**Escopo realizado:** migration inicial V1 com tabelas para usuários, autorizações LinkedIn, transações OAuth, rascunhos, publicações, oportunidades e auditoria; entidades e repositórios JPA correspondentes; UUID/timestamps em `TEXT`; Hibernate em `validate`.
+**Adições benéficas:** conversor de `Instant` para ISO-8601 e leitura de epoch-milliseconds legados; teste de persistência força leitura após limpar o contexto JPA; foreign keys SQLite são ativadas nos perfis local/test. O Passo 7 adicionou V2 para credenciais locais sem reescrever V1.
+**Verificação:** Flyway e validação Hibernate são exercitados na inicialização de testes com SQLite em memória; persistência UUID/Instant de `AppUser` tem teste explícito e a suíte cobre a ativação de foreign keys.
+**Pendências:** ainda não há teste de atualização de um banco V1 já populado para V2 nem teste de persistência individual de todas as entidades. Antes de alterar tabelas OAuth no Passo 8, comparar DDL, entidades e constraints e adicionar apenas migration aditiva, provando tanto banco vazio quanto upgrade preservando dados. O Passo 6 inicializou estruturas de funcionalidades futuras, mas não implementou tais funcionalidades; não expandir seus modelos até a etapa de negócio correspondente.
 
 ### Passo 7 — Implementar identidade local e autorização da aplicação
-**Objetivo:** cada recurso pertence a um usuário local antes de conectar ao LinkedIn.
-**Decisão:** a aplicação aceita múltiplos usuários, cada um com conta e sessão independentes. Senhas são armazenadas com hash BCrypt; a autenticação usa sessão HTTP e CSRF, sem expor credenciais ou tokens de sessão no corpo da resposta.
-**Entregáveis:** cadastro, login, logout e consulta do usuário autenticado; migration aditiva de credenciais; proteção das rotas privadas e testes de isolamento/autenticação.
+**Objetivo:** permitir que múltiplos usuários locais se cadastrem e autentiquem antes de conectar contas LinkedIn, com sessões independentes. O isolamento de rascunhos, publicações e demais recursos só poderá ser implementado quando esses casos de uso existirem nas etapas seguintes.
+**Decisão:** múltiplas contas; e-mail normalizado; senha em BCrypt; sessão HTTP com CSRF; nenhuma senha ou token de sessão no corpo da resposta.
+**Escopo implementado:** cadastro, login, logout, `/users/me`, `AppUserDetailsService`/principal, regras Security, aplicação da estratégia de troca do identificador de sessão no login, V2 para `password_hash` e índice case-insensitive; status e hash persistidos. Isso autentica usuários locais, mas ainda não implementa autorização de propriedade para rascunhos/publicações nem conexão LinkedIn. O início do OAuth no Passo 8 deve usar essa identidade local, sem confundi-la com a identidade LinkedIn.
+**Adições benéficas:** testes unitários e de integração separados; validação do limite BCrypt em bytes UTF-8; token CSRF real obtido da API em teste; testes de isolamento entre sessões e ausência de credenciais nas respostas; exceções organizadas em `exception`; `UserRegistrationPort` movida para `application.ports.out`; remoção de `package-info.java` das pastas que agora têm classes.
+**Verificação atual:** `mvn clean test` passou com 21 testes: 13 de API/autenticação, 4 unitários de cadastro, 2 de conversão, 1 de persistência e 1 de contexto. A integração comprova que duas sessões autenticadas consultam usuários distintos e que uma sessão não autenticada recebe `401`; isso não é teste de acesso a recursos de negócio. A ausência de `password`/`passwordHash` é verificada explicitamente na resposta de cadastro; o DTO comum de usuário também é usado no login, mas esse mesmo assert não é repetido nesse endpoint. Embora o login invoque `ChangeSessionIdAuthenticationStrategy`, ainda falta teste com sessão pré-autenticação para comprovar a rotação contra session fixation. Ver `docs/progress/STEP-07.md`.
+**Limitações registradas:** usuários anteriores à V2 recebem hash vazio e não conseguem autenticar; ainda não há redefinição/alteração de senha ou rate limiting (este último previsto no Passo 14). A migration V2 ainda precisa de verificação explícita em banco V1 populado. Não declarar isolamento de rascunhos/publicações: esses casos de uso ainda não existem.
+
+### Revisão retrospectiva dos Passos 1–7
+
+- Os relatórios disponíveis são `STEP-01`, `STEP-02`, `STEP-02b`, `STEP-04`, `STEP-04b`, `STEP-05`, `STEP-06` e `STEP-07`. Não há relatório `STEP-03` nem evidência do Developer Portal; essa etapa manual permanece não confirmada.
+- Melhorias posteriores ao roteiro curto original — conversão ISO/legado de `Instant`, foreign keys habilitadas por conexão, migração case-insensitive de e-mail, autenticação multiusuário, CSRF/sessão, testes unitários e integração, e organização explícita de ports/exceções — foram incorporadas às descrições dos Passos 5–7 acima.
+- A alteração registrada em V1 no commit `2d50ec5` removeu somente uma linha em branco e não mudou schema nem comportamento; é ruído de formatação, não uma funcionalidade adicional.
+- O status histórico de build em `STEP-04.md` antecede a execução posterior bem-sucedida; esta seção registra a validação mais recente sem reescrever o relato histórico. Em contrapartida, não se infere que o app LinkedIn esteja registrado, que o perfil prod esteja pronto ou que migrations de upgrade estejam validadas.
+- Antes do Passo 8: confirmar manualmente a conclusão do Passo 3; escolher JDK 21 para validação do baseline; decidir/formalizar a chave de cifragem; confirmar contrato de callback/reconexão conforme `STEP-08-PLAN.md`; e decidir se upgrade V1→V2 precisa ser provado antes de OAuth.
 
 ### Passo 8 — Implementar o ciclo OAuth com o LinkedIn
 **Objetivo:** conectar e desconectar a conta LinkedIn do usuário local autenticado por Authorization Code Flow, sem expor credenciais ou tokens ao cliente.
