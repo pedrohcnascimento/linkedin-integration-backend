@@ -22,4 +22,6 @@ app:
   security:
     token-encryption-key: ${TOKEN_ENCRYPTION_KEY:}
     cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  rate-limit:
+    hmac-key: ${RATE_LIMIT_HMAC_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
   base-url: ${APP_BASE_URL:http://localhost:8080}

@@ -15,7 +15,8 @@ Este projeto lida com credenciais OAuth de terceiros (LinkedIn) e conteúdo publ
 - O fluxo OAuth deve validar `state` de uso único (proteção CSRF) e usar `redirect_uri` exata, sem curingas
 - HTTPS obrigatório em produção
 - CORS restrito às origens conhecidas; CSRF habilitado para sessões baseadas em cookie ou justificativa documentada se a API usar somente bearer tokens
-- Rate limiting nos endpoints de OAuth e de publicação
+- Rate limiting em login, cadastro e endpoints OAuth, além dos endpoints de publicação quando implementados. Aplicar limites por IP e, conforme a rota, por conta, sessão ou state; devolver `429` genérico com `Retry-After`. Produção deve usar Redis compartilhado com operações atômicas entre instâncias; falha do Redis deve falhar fechada com `503`, nunca desativar o limite silenciosamente. Endereços encaminhados (`X-Forwarded-For`/`Forwarded`) não são confiáveis por padrão: o proxy de borda deve preservar o IP de origem ou aplicar limite no próprio gateway.
+- Os perfis `local` e `test` usam contadores em memória somente para desenvolvimento/testes. No perfil `prod`, `RATE_LIMIT_REDIS_URL` e `RATE_LIMIT_HMAC_KEY` são obrigatórios; gere a chave HMAC em Base64 com pelo menos 32 bytes, use o mesmo valor em todas as instâncias e mantenha-o fora do repositório.
 - Erros nunca devem vazar stack traces ou detalhes internos ao cliente
 - Backups do banco devem ser cifrados
 - O usuário deve conseguir desconectar sua conta do LinkedIn a qualquer momento, removendo os tokens locais; não afirmar revogação remota sem implementá-la e confirmá-la na API oficial

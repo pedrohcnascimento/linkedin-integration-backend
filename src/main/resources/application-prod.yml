@@ -11,6 +11,9 @@ server:
         same-site: lax
 
 spring:
+  data:
+    redis:
+      url: ${RATE_LIMIT_REDIS_URL}
   datasource:
     # PostgreSQL no perfil prod; o perfil local continua usando SQLite.
     url: ${DATABASE_URL}
@@ -31,6 +34,9 @@ spring:
 
 # Segurança e Integração
 app:
+  rate-limit:
+    hmac-key: ${RATE_LIMIT_HMAC_KEY}
+    redis-key-prefix: linkedin-integration
   linkedin:
     client-id: ${LINKEDIN_CLIENT_ID}
     client-secret: ${LINKEDIN_CLIENT_SECRET}

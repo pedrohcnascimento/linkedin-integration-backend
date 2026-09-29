@@ -7,6 +7,8 @@ import com.example.linkedinagent.application.linkedin.LinkedInOAuthConfiguration
 import com.example.linkedinagent.application.linkedin.LinkedInOAuthService;
 import com.example.linkedinagent.application.linkedin.LinkedInProviderException;
 import com.example.linkedinagent.application.linkedin.TokenEncryptionException;
+import com.example.linkedinagent.application.ratelimit.RateLimitService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -19,19 +21,34 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
 import java.time.Instant;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/linkedin")
 public class LinkedInOAuthController {
 
     private final LinkedInOAuthService oauthService;
+    private final RateLimitService rateLimitService;
 
-    public LinkedInOAuthController(LinkedInOAuthService oauthService) {
+    public LinkedInOAuthController(LinkedInOAuthService oauthService, RateLimitService rateLimitService) {
         this.oauthService = oauthService;
+        this.rateLimitService = rateLimitService;
     }
 
     @GetMapping("/oauth/start")
-    public ResponseEntity<Void> start(@AuthenticationPrincipal AppUserPrincipal user) {
+    public ResponseEntity<Void> start(
+            @AuthenticationPrincipal AppUserPrincipal user,
+            HttpServletRequest request) {
+        List<RateLimitService.Limit> limits = new ArrayList<>();
+        limits.add(new RateLimitService.Limit(
+                "account", user.getId().toString(), 10, Duration.ofHours(1)));
+        if (request.getSession(false) != null) {
+            limits.add(new RateLimitService.Limit(
+                    "session", request.getSession(false).getId(), 8, Duration.ofMinutes(15)));
+        }
+        rateLimitService.check("oauth-start", limits);
         URI authorizationUri = oauthService.start(user.getId());
         return ResponseEntity.status(HttpStatus.FOUND).location(authorizationUri).build();
     }
@@ -40,7 +57,16 @@ public class LinkedInOAuthController {
     public ResponseEntity<?> callback(
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String state,
-            @RequestParam(required = false) String error) {
+            @RequestParam(required = false) String error,
+            HttpServletRequest request) {
+        List<RateLimitService.Limit> limits = new ArrayList<>();
+        if (state != null && !state.isBlank()) {
+            limits.add(new RateLimitService.Limit(
+                    "state", state, 6, Duration.ofMinutes(15)));
+        }
+        if (!limits.isEmpty()) {
+            rateLimitService.check("oauth-callback", limits);
+        }
         if (error != null) {
             oauthService.rejectAuthorization(state);
             return ResponseEntity.badRequest()

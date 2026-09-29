@@ -27,7 +27,7 @@ Executar toda a suíte com `mvn test`. Funcionalidades planejadas ainda sem impl
 
 ## Limitações e riscos remanescentes
 
-- Não há rate limiting nem política de recuperação/alteração de senha; rate limiting está previsto no Passo 14.
+- Na conclusão deste passo ainda não havia rate limiting nem política de recuperação/alteração de senha; o rate limiting foi implementado posteriormente para login, cadastro e OAuth.
 - O login é baseado em sessão e depende do cliente manter o cookie e enviar CSRF; implantação cross-site requer configuração explícita de CORS e cookies compatível com o domínio e HTTPS.
 - Contas eventualmente existentes antes da migration recebem hash vazio e não conseguem autenticar; ainda não há fluxo de redefinição de senha.
 - Nenhum commit ou push foi feito.

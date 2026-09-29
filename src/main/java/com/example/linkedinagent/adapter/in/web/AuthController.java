@@ -5,6 +5,7 @@ import com.example.linkedinagent.exception.EmailAlreadyRegisteredException;
 import com.example.linkedinagent.exception.PasswordTooLongException;
 import com.example.linkedinagent.application.auth.RegisteredUser;
 import com.example.linkedinagent.application.auth.RegistrationService;
+import com.example.linkedinagent.application.ratelimit.RateLimitService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -35,6 +36,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.time.Duration;
+import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 @RestController
@@ -47,18 +51,21 @@ public class AuthController {
     private final SecurityContextRepository securityContextRepository;
     private final SessionAuthenticationStrategy sessionAuthenticationStrategy;
     private final CsrfTokenRepository csrfTokenRepository;
+    private final RateLimitService rateLimitService;
 
     public AuthController(
             RegistrationService registrationService,
             AuthenticationManager authenticationManager,
             SecurityContextRepository securityContextRepository,
             SessionAuthenticationStrategy sessionAuthenticationStrategy,
-            CsrfTokenRepository csrfTokenRepository) {
+            CsrfTokenRepository csrfTokenRepository,
+            RateLimitService rateLimitService) {
         this.registrationService = registrationService;
         this.authenticationManager = authenticationManager;
         this.securityContextRepository = securityContextRepository;
         this.sessionAuthenticationStrategy = sessionAuthenticationStrategy;
         this.csrfTokenRepository = csrfTokenRepository;
+        this.rateLimitService = rateLimitService;
     }
 
     @GetMapping("/auth/csrf")
@@ -68,6 +75,8 @@ public class AuthController {
 
     @PostMapping("/auth/register")
     public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
+        rateLimitService.check("auth-register", List.of(new RateLimitService.Limit(
+                "account", request.email().trim().toLowerCase(Locale.ROOT), 3, Duration.ofDays(1))));
         RegisteredUser user =
                 registrationService.register(request.email(), request.displayName(), request.password());
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -79,6 +88,8 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request,
             HttpServletRequest httpRequest,
             HttpServletResponse httpResponse) {
+        rateLimitService.check("auth-login", List.of(new RateLimitService.Limit(
+                "account", request.email().trim().toLowerCase(Locale.ROOT), 8, Duration.ofMinutes(15))));
         Authentication authentication;
         try {
             authentication = authenticationManager.authenticate(
