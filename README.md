@@ -6,7 +6,7 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-🚧 **Passo 8 implementado e validado por testes automatizados** — conexão/desconexão LinkedIn via OAuth, tokens cifrados e isolamento por usuário. App real, smoke test, rate limiting OAuth e validação no JDK 21 seguem pendentes antes de produção; publicação e demais recursos de negócio estão fora do passo atual.
+🚧 **Passo 8 implementado e validado por testes automatizados** — conexão/desconexão LinkedIn via OAuth, tokens cifrados, isolamento por usuário e rate limiting para autenticação/OAuth. App real, smoke test e validação no JDK 21 seguem pendentes antes de produção; publicação e demais recursos de negócio estão fora do passo atual.
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) (um arquivo `STEP-XX.md` por etapa concluída) e o roteiro completo em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
@@ -87,6 +87,8 @@ DATABASE_URL
 DATABASE_USERNAME
 DATABASE_PASSWORD
 CORS_ALLOWED_ORIGINS
+RATE_LIMIT_HMAC_KEY
+RATE_LIMIT_REDIS_URL (somente no perfil prod)
 ```
 
 Nenhuma dessas variáveis deve conter valores reais no repositório.
@@ -106,13 +108,25 @@ LINKEDIN_CLIENT_ID=<client id>
 LINKEDIN_CLIENT_SECRET=<client secret>
 LINKEDIN_REDIRECT_URI=https://<dominio>/api/v1/linkedin/oauth/callback
 TOKEN_ENCRYPTION_KEY=<Base64 de exatamente 32 bytes>
+RATE_LIMIT_HMAC_KEY=<Base64 de pelo menos 32 bytes, gere um segredo exclusivo para prod>
+RATE_LIMIT_REDIS_URL=rediss://:<senha>@<redis-host>:6379
 APP_BASE_URL=https://<dominio>
 CORS_ALLOWED_ORIGINS=https://<frontend>
 ```
 
 `LINKEDIN_SCOPES` é opcional e usa `openid profile w_member_social` por padrão. Cadastre a redirect URI exata no Developer Portal. Para iniciar com Maven, execute `mvn spring-boot:run` com essas variáveis no ambiente; para um JAR empacotado, use `java -jar target/linkedinagent-0.1.0-SNAPSHOT.jar`. A conta do banco precisa poder criar/alterar objetos para aplicar migrations na primeira inicialização e ler o histórico Flyway nas seguintes.
 
+#### Rate limiting
+
+Login é limitado por IP (30 tentativas/15 min) e conta (8/15 min); cadastro por IP (10/h) e endereço de conta (3/24 h); início do OAuth por IP (30/15 min), usuário (10/h) e sessão (8/15 min); callback por IP (60/15 min) e state (6/15 min). Os contadores usam janelas fixas iniciadas na primeira tentativa. A resposta de limite é `429 RATE_LIMITED`, genérica, com `Retry-After` em segundos. Publicações ainda não têm rotas; o interceptor já aplica limites por IP, usuário e sessão em futuras operações de escrita sob `/api/v1/publications/**`.
+
+No perfil `prod`, Redis é obrigatório e compartilhado por todas as instâncias. Scripts Lua incrementam atomicamente os contadores e as chaves expiram ao fim das janelas. Configure `RATE_LIMIT_REDIS_URL` com autenticação e TLS quando disponível, e use o mesmo `RATE_LIMIT_HMAC_KEY` Base64 de pelo menos 32 bytes em todas as instâncias (por exemplo, gere-o com `openssl rand -base64 32`); os valores usados nas chaves são HMACs, não IPs, e-mails, sessões ou state em claro. Se Redis estiver indisponível, as requisições limitadas falham fechadas com `503` e `Retry-After: 5`. Os perfis `local` e `test` usam armazenamento em memória, sem garantia entre reinícios ou instâncias, portanto não devem ser usados como mecanismo de produção distribuído.
+
+O servidor usa `getRemoteAddr()` e ignora `Forwarded`/`X-Forwarded-For` para evitar falsificação pelo cliente. Atrás de proxy, preserve o IP de origem até a aplicação ou configure o rate limiting no gateway confiável; não encaminhe headers fornecidos diretamente pelo cliente como se fossem confiáveis.
+
 Para validar a configuração de produção contra um banco PostgreSQL de teste vazio e descartável, defina `POSTGRES_TEST_URL`, `POSTGRES_TEST_USERNAME` e `POSTGRES_TEST_PASSWORD` e execute `mvn -Dtest=PostgreSqlProfileIntegrationTest test`. Esse teste sobe o perfil `prod`, aplica as migrations, confirma a conexão e `ddl-auto=validate`, e exercita persistência/consulta de usuário, autorização LinkedIn e consumo de transação OAuth. Não aponte essas variáveis para um banco de produção: o teste grava dados. Sem `POSTGRES_TEST_URL`, o teste é ignorado e a suíte normal continua usando SQLite.
+
+Para exercitar o armazenamento distribuído, configure `RATE_LIMIT_REDIS_TEST_URL` para um Redis de teste descartável e execute `mvn -Dtest=RedisRateLimitStoreIntegrationTest test`. Sem essa variável, esses testes de integração são ignorados.
 
 ### Autenticação local
 

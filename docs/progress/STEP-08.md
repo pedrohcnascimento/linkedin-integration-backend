@@ -41,7 +41,7 @@ Não foi necessária migration: o schema V1 existente já continha as tabelas e 
 - A suíte usa SQLite e respostas simuladas; não acessa credenciais nem endpoints reais do LinkedIn.
 - Execução feita com Java 25.0.2; validar também com JDK 21 continua pendente conforme a configuração-alvo do projeto.
 - Avisos de ferramentas/dependências observados durante a execução não impediram compilação nem testes.
-- Rate limiting para endpoints OAuth, exigido pela política geral de segurança, ainda não está implementado; não expor publicamente até adicioná-lo.
+- Rate limiting para login, cadastro e endpoints OAuth está implementado; as rotas de publicação ainda não existem.
 - O perfil de produção usa PostgreSQL, com driver JDBC, migrations Flyway e `ddl-auto=validate`. A validação contra um servidor PostgreSQL deve ser executada com `POSTGRES_TEST_URL`, `POSTGRES_TEST_USERNAME` e `POSTGRES_TEST_PASSWORD`; ver procedimento no README.
 - Após configurar esse perfil, `mvn clean package` concluiu com 41 testes aprovados e o teste PostgreSQL ignorado por não haver serviço PostgreSQL configurado neste ambiente; o driver JDBC e o módulo Flyway PostgreSQL estão presentes no JAR executável.
 
@@ -51,7 +51,7 @@ Não foi necessária migration: o schema V1 existente já continha as tabelas e 
 2. Cadastrar a redirect URI exata. O padrão local é HTTP em `localhost`; para ambiente não local usar HTTPS se exigido pelo portal.
 3. Configurar client ID, client secret e chave válida fora do repositório e realizar smoke test manual sem expor os valores.
 4. Definir URL fixa de frontend somente quando o cliente existir; até lá, o callback permanece com resposta JSON.
-5. Adicionar rate limiting aos endpoints OAuth antes de exposição pública.
+5. Validar o rate limiting distribuído em Redis de teste e a configuração confiável do IP de origem no gateway/proxy antes da exposição pública.
 
 ## Referências oficiais consultadas
 
