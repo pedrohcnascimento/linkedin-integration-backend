@@ -1,6 +1,6 @@
 # Plano do Passo 8 — Ciclo OAuth com o LinkedIn
 
-**Status:** proposta de planejamento para revisão do proprietário; implementação ainda não iniciada.  
+**Status:** implementado e validado localmente; a configuração real do app no Developer Portal e o smoke test externo continuam pendentes.
 **Escopo:** conectar e desconectar uma conta LinkedIn do usuário local autenticado, sem iniciar publicação ou qualquer outra funcionalidade de negócio.
 
 ## 1. Contexto confirmado no repositório
@@ -36,16 +36,16 @@ Fora deste passo:
 - Publicações, Posts API, rascunhos, mídia, oportunidades, coleta de perfil além do identificador mínimo, permissões organizacionais e OAuth implícito/browser-only.
 - Testes que chamem o LinkedIn real ou dependam de credenciais reais.
 
-## 3. Verificações e decisões antes do primeiro código
+## 3. Verificações e decisões registradas
 
-1. **Fontes e app:** revisar documentação oficial atual para authorization endpoint, token endpoint, redirect URI exata, scopes, UserInfo, formato/validade dos tokens, erros e eventual revogação. Confirmar no Developer Portal que o app de desenvolvimento habilitou os produtos e scopes requeridos. Não inferir acesso aprovado apenas porque o nome do scope consta na matriz.
-2. **Contrato do cliente:** decidir se callback retorna uma página/resposta própria ou redireciona para uma URL fixa permitida; definir mensagens genéricas para sucesso, recusa e falha. Nunca aceitar URL de retorno arbitrária fornecida pelo request (evitar open redirect).
-3. **Política de callback:** manter o início autenticado. Definir e testar se o callback é permitido sem autenticação HTTP, usando exclusivamente a transação `state` de uso único para identificar a conta local. Não confiar em ID, e-mail ou associação fornecidos no callback.
-4. **Reconexão:** decidir o que fazer quando o usuário já tem autorização ativa: rejeitar e pedir desconexão explícita ou substituir somente após o novo fluxo concluir com sucesso. Não apagar a autorização válida no início de uma tentativa.
-5. **Desconexão:** definir a remoção local do token e o estado persistido. Não afirmar que a conta foi revogada no LinkedIn se não houver endpoint oficial confirmado e utilizado.
-6. **Chave:** fixar um único formato para `TOKEN_ENCRYPTION_KEY` (por exemplo, Base64 que decodifica para exatamente 32 bytes para AES-256-GCM), validar configuração antes de cifrar/decifrar e definir como teste recebe chave fictícia. O comentário em `.env.example` sugere 32 bytes Base64, mas a configuração/testes existentes ainda não formalizam esse contrato.
-7. **Persistência:** verificar entidades versus DDL e validação Hibernate antes de alterar schema. Preservar V1/V2; qualquer correção necessária deve ser migration aditiva V3, com justificativa e teste em banco limpo e banco já migrado.
-8. **Refresh:** inspecionar resposta real somente em ambiente de desenvolvimento autorizado, sem registrar ou compartilhar seu conteúdo secreto. Até haver evidência, tratar `refresh_token` como ausente e não implementar lógica de refresh.
+1. **Fontes e app:** foram revisadas as fontes oficiais de Authorization Code Flow, escopos e OpenID Connect/UserInfo. Endpoints usados: `https://www.linkedin.com/oauth/v2/authorization`, `https://www.linkedin.com/oauth/v2/accessToken` e `https://api.linkedin.com/v2/userinfo`. O registro do app, os produtos liberados, a redirect URI e os scopes habilitados no Developer Portal **não estão confirmados**; não houve chamada real ao LinkedIn.
+2. **Contrato do cliente:** o callback retorna JSON sanitizado, sem redirecionamento ao frontend, pois ainda não há URL fixa aprovada. A recusa e os erros retornam códigos/mensagens genéricos. Nenhuma URL de retorno é aceita do request.
+3. **Política de callback:** início e consulta exigem usuário local autenticado; callback é público e usa exclusivamente `state` aleatório, com hash persistido, expiração de dez minutos e consumo atômico de uso único para identificar o usuário.
+4. **Reconexão:** a autorização existente permanece intacta durante a tentativa e só é substituída depois de troca do código, obtenção da identidade e cifragem bem-sucedidas.
+5. **Desconexão:** remove a autorização e cancela transações pendentes localmente. Não declara nem executa revogação remota.
+6. **Chave:** `TOKEN_ENCRYPTION_KEY` é Base64 com exatamente 32 bytes decodificados para AES-256-GCM. A chave é validada antes de iniciar o fluxo e novamente ao cifrar/decifrar; testes usam somente chave fictícia.
+7. **Persistência:** entidades e DDL existentes suportam o fluxo; não foi necessária migration, mantendo V1/V2. Os testes aplicam ambas as migrations em SQLite vazio e validam o schema.
+8. **Refresh:** o token de refresh é opcional e cifrado apenas se recebido. Não foi presumida disponibilidade no Developer Portal, e não há renovação automática implementada.
 
 ## 4. Organização prevista
 
@@ -99,15 +99,15 @@ Não mover as classes de autenticação local do Passo 7 nem misturar OAuth Link
 
 Todos os testes são determinísticos, usam credenciais fictícias e cliente HTTP simulado. O smoke test manual com o Developer Portal é complementar, opcional e nunca substitui a suíte.
 
-## 7. Sequência de execução proposta
+## 7. Implementação e validação executadas
 
-1. Fechar as decisões da seção 3 e registrar evidências oficiais, data de verificação e scopes de fato habilitados.
-2. Revisar compatibilidade DDL/JPA e adicionar somente migration aditiva se indispensável.
-3. Implementar primeiro `state` de uso único e cifragem, com testes unitários.
-4. Implementar portas/caso de uso e adaptadores HTTP/persistência com servidor simulado.
-5. Expor endpoints e política Security/CSRF; adicionar testes MockMvc e isolamento.
-6. Atualizar OpenAPI, `.env.example`, README, SECURITY e relatório `STEP-08.md` com resultados reais (não converter este plano em relatório de conclusão antecipadamente).
-7. Executar `mvn clean test`, revisar diff, verificar ausência de segredos e só então considerar o Passo 8 concluído.
+1. Criados o caso de uso, portas, controller, adaptadores HTTP/JPA e cifrador AES-GCM.
+2. Configurados timeouts de rede (5 s para conexão e 10 s para leitura), validação de credenciais/redirect/scopes e erros sanitizados.
+3. Callback, consumo concorrente do state, persistência, isolamento de usuário, CSRF e desconexão foram exercitados por testes MockMvc/SQLite; chamadas do provedor foram simuladas.
+4. Cifragem, cliente OAuth e regras da aplicação têm testes unitários com credenciais fictícias.
+5. `mvn clean test` passou após as alterações.
+6. Não houve alteração de schema nem migration nova.
+7. O app no Developer Portal e o teste real via browser continuam pendentes de confirmação/configuração pelo proprietário.
 
 ## 8. Critérios de aceite
 
@@ -119,6 +119,6 @@ Todos os testes são determinísticos, usam credenciais fictícias e cliente HTT
 - Reconexão, callback e desconexão seguem decisões documentadas; refresh/revogação não são inventados.
 - Testes de unidade, integração/API e persistência passam; migration (se houver) é aditiva e validada.
 
-## 9. Próxima ação permitida
+## 9. Próxima ação necessária
 
-Antes de escrever código, revisar com o proprietário as decisões da seção 3, sobretudo contrato do callback, reconexão/desconexão e formato da chave. Em seguida, verificar fontes oficiais e disponibilidade real dos produtos/scopes no app. Até essas verificações serem concluídas, o Passo 8 permanece em planejamento.
+Antes de tentar o fluxo real, confirmar no Developer Portal que o app tem os produtos e scopes necessários, cadastrar a redirect URI exata configurada localmente e garantir HTTPS/callback aceito pelo portal. Inserir client ID, client secret e uma chave Base64 válida apenas no ambiente local/secret manager; então executar o smoke test sem compartilhar esses valores. A indisponibilidade/ausência do app no portal não impede os testes automatizados, mas impede declarar a integração real ponta a ponta verificada.

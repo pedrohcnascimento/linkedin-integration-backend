@@ -6,7 +6,7 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-🚧 **Passo 7 do roteiro operacional concluído** — schema SQLite, migrations e identidade local multiusuário com cadastro, login por sessão e proteção CSRF. A integração OAuth e os recursos de negócio ainda não foram implementados.
+🚧 **Passo 8 implementado e validado por testes automatizados** — conexão/desconexão LinkedIn via OAuth, tokens cifrados e isolamento por usuário. App real, smoke test, rate limiting OAuth e validação no JDK 21 seguem pendentes antes de produção; publicação e demais recursos de negócio estão fora do passo atual.
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) (um arquivo `STEP-XX.md` por etapa concluída) e o roteiro completo em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
@@ -80,6 +80,7 @@ Variáveis de ambiente necessárias (ver `.env.example`):
 LINKEDIN_CLIENT_ID
 LINKEDIN_CLIENT_SECRET
 LINKEDIN_REDIRECT_URI
+LINKEDIN_SCOPES
 TOKEN_ENCRYPTION_KEY
 APP_BASE_URL
 DATABASE_URL
@@ -99,6 +100,15 @@ Nenhuma dessas variáveis deve conter valores reais no repositório.
 - `POST /api/v1/auth/logout` encerra a sessão.
 
 O cliente deve guardar o cookie de sessão com segurança e enviar o token CSRF no header indicado pela rota `/csrf`; tokens de senha nunca são devolvidos pela API. Em produção, a aplicação deve ser publicada exclusivamente por HTTPS.
+
+### Conexão com o LinkedIn
+
+- `GET /api/v1/linkedin/oauth/start` inicia a autorização e redireciona ao LinkedIn; exige sessão local e configuração OAuth/chave de cifragem válidas.
+- `GET /api/v1/linkedin/oauth/callback` recebe o retorno público do LinkedIn, protegido por `state` de uso único, e devolve JSON sem tokens.
+- `GET /api/v1/linkedin/connection` consulta o estado sanitizado da conexão do usuário autenticado.
+- `DELETE /api/v1/linkedin/connection` desconecta localmente; exige sessão e token CSRF.
+
+O callback está configurado como `http://localhost:8080/api/v1/linkedin/oauth/callback` apenas para desenvolvimento local. Em produção, configure a URI HTTPS exata também no Developer Portal. Os scopes padrão são `openid profile w_member_social`; os scopes efetivamente concedidos dependem dos produtos habilitados no app. Nenhum teste automatizado chama o LinkedIn real. A desconexão remove credenciais locais, mas não afirma revogação remota.
 
 ## Limitações conhecidas (v1)
 
