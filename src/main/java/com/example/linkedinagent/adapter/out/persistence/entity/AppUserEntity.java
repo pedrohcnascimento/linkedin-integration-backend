@@ -19,6 +19,9 @@ public class AppUserEntity {
     
     @Column(name = "display_name", nullable = false, columnDefinition = "TEXT")
     private String displayName;
+
+    @Column(name = "password_hash", nullable = false, columnDefinition = "TEXT")
+    private String passwordHash;
     
     @Column(nullable = false)
     private String status;
@@ -36,6 +39,8 @@ public class AppUserEntity {
     public void setEmail(String email) { this.email = email; }
     public String getDisplayName() { return displayName; }
     public void setDisplayName(String displayName) { this.displayName = displayName; }
+    public String getPasswordHash() { return passwordHash; }
+    public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public Instant getCreatedAt() { return createdAt; }
