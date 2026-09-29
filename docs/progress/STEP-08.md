@@ -42,6 +42,8 @@ Não foi necessária migration: o schema V1 existente já continha as tabelas e 
 - Execução feita com Java 25.0.2; validar também com JDK 21 continua pendente conforme a configuração-alvo do projeto.
 - Avisos de ferramentas/dependências observados durante a execução não impediram compilação nem testes.
 - Rate limiting para endpoints OAuth, exigido pela política geral de segurança, ainda não está implementado; não expor publicamente até adicioná-lo.
+- O perfil de produção usa PostgreSQL, com driver JDBC, migrations Flyway e `ddl-auto=validate`. A validação contra um servidor PostgreSQL deve ser executada com `POSTGRES_TEST_URL`, `POSTGRES_TEST_USERNAME` e `POSTGRES_TEST_PASSWORD`; ver procedimento no README.
+- Após configurar esse perfil, `mvn clean package` concluiu com 41 testes aprovados e o teste PostgreSQL ignorado por não haver serviço PostgreSQL configurado neste ambiente; o driver JDBC e o módulo Flyway PostgreSQL estão presentes no JAR executável.
 
 ## Pendências externas
 

@@ -291,22 +291,21 @@ Usuário deve conseguir desconectar o LinkedIn — apagando/inutilizando tokens,
 
 Banco com controle de acesso por usuário, backups cifrados. Documentar quais dados vêm do LinkedIn, quais são criados pelo usuário e quais são derivados. Acesso interno aos tokens restrito ao adaptador de integração.
 
-## 12. Migração futura para PostgreSQL
+## 12. Persistência PostgreSQL em produção
 
-Tratada como mudança de adaptador de persistência/configuração, não do domínio:
+O perfil `prod` usa o driver JDBC PostgreSQL gerenciado pelo Spring Boot, configura o dialeto PostgreSQL e mantém `ddl-auto=validate`. O perfil local continua usando SQLite. As migrations Flyway V1/V2 usam tipos portáveis (`TEXT`, `INTEGER`) e são aplicadas na inicialização; o Hibernate valida o mapeamento das entidades contra o schema já migrado.
 
-1. Usar JPA e interfaces de repositório, sem SQL específico nas regras de negócio
-2. Evitar tipos e funções exclusivas do SQLite
-3. Manter migrations compatíveis ou separar scripts por banco
-4. Nomes de tabela/coluna explícitos e portáveis
-5. Evitar dependência em comportamento de `NULL`, ordenação implícita ou chaves geradas específicas
-6. Testar constraints e transações em ambos os bancos
-7. Externalizar URL, usuário, senha e driver por perfil
-8. Substituir driver SQLite pelo PostgreSQL no perfil de produção
-9. Trocar dialeto Hibernate e revisar migrations
-10. Revisar concorrência, pooling e isolamento de transações
+Antes de um deploy:
 
-Entidades, serviços, controllers, portas e regras de negócio não deveriam precisar ser reescritos.
+1. Fornecer `DATABASE_URL` no formato `jdbc:postgresql://<host>:<porta>/<banco>` e `DATABASE_USERNAME`/`DATABASE_PASSWORD` por secret manager ou configuração do serviço; configurar TLS conforme o provedor.
+2. Usar uma conta com permissões de migration na inicialização e manter o histórico Flyway acessível.
+3. Em um PostgreSQL de teste vazio e descartável, executar `mvn -Dtest=PostgreSqlProfileIntegrationTest test`. O teste inicia com perfil `prod`, aplica V1/V2, verifica conexão e validação Hibernate e executa operações de repositório para usuário, autorização LinkedIn, UUID, timestamps e consumo de transação.
+4. Executar a suíte geral `mvn clean test`; ela permanece isolada em SQLite e não acessa serviços externos.
+5. Só então promover a mesma configuração de schema para produção. Não execute o teste de integração em banco produtivo: ele grava dados.
+
+Sem `POSTGRES_TEST_URL`, `POSTGRES_TEST_USERNAME` e `POSTGRES_TEST_PASSWORD`, o teste PostgreSQL é ignorado. O teste automatizado verifica operações JPA atuais (usuário e transação OAuth); tabelas de publicação/oportunidade não têm casos de uso implementados nesta etapa e não há queries de negócio dessas funcionalidades a validar ainda.
+
+Entidades, serviços, controllers, portas e regras de negócio não deveriam depender do banco concreto. Qualquer evolução nas migrations deve continuar compatível com SQLite e PostgreSQL ou declarar scripts separados por banco, acompanhados por testes nos dois perfis.
 
 ## 13. Configuração por ambiente
 

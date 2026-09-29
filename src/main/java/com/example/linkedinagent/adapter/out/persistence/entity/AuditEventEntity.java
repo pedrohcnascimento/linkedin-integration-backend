@@ -1,6 +1,8 @@
 package com.example.linkedinagent.adapter.out.persistence.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -8,6 +10,7 @@ import java.util.UUID;
 @Table(name = "audit_event")
 public class AuditEventEntity {
     @Id
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "id", columnDefinition = "TEXT")
     private UUID id;
 

@@ -12,16 +12,18 @@ server:
 
 spring:
   datasource:
-    # URL do banco de dados (ex: jdbc:postgresql://...)
+    # PostgreSQL no perfil prod; o perfil local continua usando SQLite.
     url: ${DATABASE_URL}
     username: ${DATABASE_USERNAME}
     password: ${DATABASE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
     
     # HikariCP configurações para produção
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
   jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
       # NUNCA usar update em prod
       ddl-auto: validate

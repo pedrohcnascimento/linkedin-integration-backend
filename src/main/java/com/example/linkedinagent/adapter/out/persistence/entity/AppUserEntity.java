@@ -4,6 +4,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Column;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -11,6 +13,7 @@ import java.util.UUID;
 @Table(name = "app_user")
 public class AppUserEntity {
     @Id
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "id", columnDefinition = "TEXT")
     private UUID id;
     
