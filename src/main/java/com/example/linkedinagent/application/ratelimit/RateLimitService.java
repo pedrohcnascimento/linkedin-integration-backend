@@ -1,5 +1,6 @@
 package com.example.linkedinagent.application.ratelimit;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Value;
@@ -7,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -21,7 +23,7 @@ public class RateLimitService {
     private final RateLimitStore store;
 
     public RateLimitService(
-            RateLimitStore store,
+            @Qualifier("inMemoryRateLimitStore") RateLimitStore store,
             @Value("${app.rate-limit.hmac-key}") String encodedHmacKey) {
         this.store = store;
         try {
@@ -66,7 +68,7 @@ public class RateLimitService {
             mac.init(new SecretKeySpec(hmacKey, HMAC_ALGORITHM));
             byte[] value = (dimension + "\0" + identity).getBytes(StandardCharsets.UTF_8);
             return HexFormat.of().formatHex(mac.doFinal(value));
-        } catch (java.security.GeneralSecurityException exception) {
+        } catch (GeneralSecurityException exception) {
             throw new IllegalStateException("HMAC-SHA256 is unavailable.", exception);
         }
     }
