@@ -2,6 +2,14 @@
 # Em produção, exigimos que as variáveis de ambiente sejam fornecidas pelo ambiente.
 # Sem defaults de fallback para senhas ou segredos (vão falhar se ausentes, o que é o esperado).
 
+server:
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        secure: true
+        same-site: lax
+
 spring:
   datasource:
     # URL do banco de dados (ex: jdbc:postgresql://...)
@@ -13,7 +21,6 @@ spring:
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
-
   jpa:
     hibernate:
       # NUNCA usar update em prod
