@@ -23,4 +23,6 @@ app:
   security:
     token-encryption-key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     cors-allowed-origins: "http://localhost:5173"
+  rate-limit:
+    hmac-key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
   base-url: "http://localhost:8080"

@@ -43,6 +43,7 @@ class PostgreSqlProfileIntegrationTest {
         registry.add("spring.datasource.url", () -> requiredEnvironmentVariable("POSTGRES_TEST_URL"));
         registry.add("spring.datasource.username", () -> requiredEnvironmentVariable("POSTGRES_TEST_USERNAME"));
         registry.add("spring.datasource.password", () -> requiredEnvironmentVariable("POSTGRES_TEST_PASSWORD"));
+        registry.add("spring.data.redis.url", () -> "redis://localhost:6379");
         registry.add("app.linkedin.client-id", () -> "postgres-integration-test");
         registry.add("app.linkedin.client-secret", () -> "postgres-integration-test");
         registry.add("app.linkedin.redirect-uri",
@@ -50,6 +51,8 @@ class PostgreSqlProfileIntegrationTest {
         registry.add("app.security.token-encryption-key",
                 () -> "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
         registry.add("app.security.cors-allowed-origins", () -> "https://localhost");
+        registry.add("app.rate-limit.hmac-key",
+                () -> "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
         registry.add("app.base-url", () -> "https://localhost");
     }
 
