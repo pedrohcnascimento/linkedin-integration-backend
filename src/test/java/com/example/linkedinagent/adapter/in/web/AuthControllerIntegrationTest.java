@@ -7,8 +7,10 @@ import com.example.linkedinagent.adapter.out.persistence.repository.LinkedInAuth
 import com.example.linkedinagent.adapter.out.persistence.repository.OAuthTransactionRepository;
 import com.example.linkedinagent.application.ports.out.LinkedInOAuthClient;
 import com.example.linkedinagent.application.ports.out.OAuthTransactionPort;
+import com.example.linkedinagent.application.ratelimit.RateLimitStore;
 import com.jayway.jsonpath.JsonPath;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -27,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.net.URI;
 import java.util.Base64;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.time.Instant;
@@ -35,6 +38,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -74,6 +78,14 @@ class AuthControllerIntegrationTest {
 
     @MockitoBean
     private LinkedInOAuthClient linkedInOAuthClient;
+
+    @MockitoBean
+    private RateLimitStore rateLimitStore;
+
+    @BeforeEach
+    void allowRequestsInExistingAuthenticationScenarios() {
+        when(rateLimitStore.acquire(anyList())).thenReturn(Optional.empty());
+    }
 
     @Test
     void registrationCreatesIndependentAccountAndStoresOnlyPasswordHash() throws Exception {
