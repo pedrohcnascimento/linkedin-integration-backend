@@ -1,5 +1,7 @@
 # STEP-04b — Correção pós-build: YAML com valor terminado em `:`
 
+> **Registro histórico da correção.** Este relatório descreve a causa e a correção no momento em que ocorreram; consulte [`docs/status-atual.md`](../status-atual.md) para o estado atual do projeto.
+
 **Contexto:** você rodou `mvn clean test` localmente (obrigado!). Resultado:
 
 - ✅ Compilação: 18 arquivos, sem erros — `pom.xml` resolveu tudo de primeira, incluindo o `hibernate-community-dialects` que eu tinha marcado como maior risco (era gerenciado pelo BOM do Spring Boot 4.1 mesmo, sem precisar de versão explícita)

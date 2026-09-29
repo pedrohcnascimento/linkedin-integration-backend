@@ -1,5 +1,7 @@
 # Passo 8 — Ciclo OAuth com o LinkedIn
 
+> **Registro histórico da etapa.** Este relatório documenta a implementação do Passo 8 e suas validações no momento em que foi concluída; não substitui o status consolidado em [`docs/status-atual.md`](../status-atual.md).
+
 **Estado:** implementação automatizada concluída. A validação com o app real no Developer Portal ainda não foi executada porque cadastro, produtos, scopes e redirect URI não estão confirmados.
 
 ## Entregas

@@ -1,19 +1,19 @@
 # Matriz de capacidades — API do LinkedIn (v1)
 
 **Última verificação:** 22/09/2026, via busca web (Microsoft Learn / LinkedIn Developer docs e fontes secundárias qualificadas, citadas por link)
-**Responsável pela verificação:** agente de IA (Passo 2 do roteiro), a confirmar por revisão humana antes do Passo 3
+**Responsável pela verificação:** agente de IA (Passo 2 do roteiro); revalidar a documentação oficial antes do Passo 9
 
 > Esta matriz é o contrato de escopo da v1. Nenhuma chamada fora daqui deve ser implementada sem atualizar este arquivo primeiro.
 
-## ⚠️ Divergência encontrada em relação ao planejamento original
+## Contexto histórico: divergência com o planejamento original
 
-O `docs/planejamento-tecnico.md` (seção 3.1) especifica `POST https://api.linkedin.com/v2/ugcPosts` como endpoint de publicação. A pesquisa atual mostra que esse endpoint é a **API legada** (UGC Post API) — sua substituição pela **Posts API** (`POST https://api.linkedin.com/rest/posts`) foi anunciada pelo LinkedIn em 30/06/2023. Fontes atuais (2026) indicam que:
+O `docs/planejamento-tecnico.md` (seção 3.1) especifica `POST https://api.linkedin.com/v2/ugcPosts` como endpoint de publicação. Esse endpoint é a **API legada** (UGC Post API); a **Posts API** (`POST https://api.linkedin.com/rest/posts`) é a superfície ativamente mantida. A divergência foi resolvida: a decisão vigente, confirmada pelo proprietário em 22/09/2026, é usar Posts API, conforme a seção "Decisão registrada" ao final deste documento. Esta introdução preserva o contexto da análise, não indica uma pendência atual. Fontes verificadas indicam que:
 
 - A Posts API é versionada por data (header `Linkedin-Version: YYYYMM`) e é a superfície **ativamente mantida**
 - A documentação de consumidor do "Share on LinkedIn" ainda demonstra o endpoint antigo `/v2/ugcPosts` e ele **ainda funciona** para publicação no próprio perfil, segundo fontes secundárias — mas não há garantia de manutenção contínua
 - O formato do corpo da requisição é **diferente** entre as duas: a UGC Post API usa `specificContent."com.linkedin.ugc.ShareContent".shareCommentary.text`; a Posts API usa um corpo plano com `commentary`, `visibility`, `distribution`, `lifecycleState`
 
-Conforme a instrução do próprio planejamento ("se a documentação encontrada contradizer este plano, não escolher silenciosamente"), **não decidi por conta própria**. Ver seção "Decisão pendente" no final deste documento.
+O registro detalhado da decisão e suas consequências está na seção "Decisão registrada" ao final deste documento.
 
 ## 1. Identidade e login (Sign In with LinkedIn usando OpenID Connect)
 

@@ -1,10 +1,10 @@
 # Planejamento técnico — Backend para integração autorizada com o LinkedIn
 
 **Versão:** 1.0 — planejamento inicial
-**Status:** documento de arquitetura e roteiro; o estado implementado e os próximos critérios estão registrados em `docs/progress/`.
+**Status:** documento de arquitetura e roteiro; o estado implementado e as pendências vigentes estão em [`docs/status-atual.md`](status-atual.md). Os relatórios em `docs/progress/` são históricos.
 **Tecnologias obrigatórias:** Java 21, Spring Boot, Spring Web, Spring Security quando necessário, Maven, SQLite, JPA/Hibernate, JDBC subjacente, APIs RESTful, OAuth 2.0 e Docker quando aplicável.
 
-> Este arquivo é a fonte de verdade **arquitetural** do projeto. Qualquer pessoa ou agente de IA que for alterar o repositório deve lê-lo por completo antes de programar.
+> Este arquivo é a referência de arquitetura e requisitos planejados. Qualquer pessoa ou agente de IA que for alterar o repositório deve lê-lo por completo antes de programar. Para a precedência entre documentação, consulte [`docs/status-atual.md`](status-atual.md).
 >
 > **Atualização de 22/09/2026 (Passo 2 do roteiro):** o endpoint de publicação citado na seção 3.1 (`POST /v2/ugcPosts`) é uma API legada desde 30/06/2023. Após validação com a documentação oficial atual, o projeto adota a **Posts API** (`POST /rest/posts`) no lugar. Ver decisão registrada e detalhes completos em [`docs/linkedin-capability-matrix.md`](linkedin-capability-matrix.md) — esse arquivo é a fonte de verdade **factual/atualizável** sobre a API do LinkedIn e prevalece sobre este documento sempre que houver conflito.
 

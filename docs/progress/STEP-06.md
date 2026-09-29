@@ -1,5 +1,7 @@
 # STEP-06 — Criar schema SQLite e migrations
 
+> **Registro histórico da etapa.** Este relatório preserva o estado observado quando foi escrito; não representa o status atual do projeto. Consulte [`docs/status-atual.md`](../status-atual.md) para o estado e as pendências vigentes.
+
 **Objetivo:** Estabelecer a persistência reproduzível antes da lógica de negócios, definindo o banco de dados via Flyway e o mapeamento das entidades JPA, respeitando as boas práticas para SQLite.
 
 ## Alterações

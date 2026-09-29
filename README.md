@@ -10,6 +10,10 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) e o roteiro, incluindo os próximos passos, em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
+### Como interpretar a documentação
+
+Para o **estado funcional e as pendências atuais**, prevalece [`docs/status-atual.md`](docs/status-atual.md); este README é o resumo voltado a quem usa o projeto. O planejamento técnico é a referência para o roteiro e os requisitos futuros, mas não comprova que uma etapa foi implementada. Para fatos e decisões sobre a API do LinkedIn, prevalece [`docs/linkedin-capability-matrix.md`](docs/linkedin-capability-matrix.md), inclusive quando houver divergência com o planejamento. Os relatórios em `docs/progress/` são registros históricos das etapas e decisões no momento em que foram escritos; não devem ser usados como fonte de pendências ou decisões vigentes.
+
 ## Stack técnica
 
 | Item | Escolha |
