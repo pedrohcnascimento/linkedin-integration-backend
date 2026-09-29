@@ -6,9 +6,7 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-🚧 **Passo 4 do roteiro operacional concluído** — esqueleto Spring Boot que sobe, com health check e teste de contexto. Ainda sem entidades, sem OAuth, sem publicação — isso vem nos próximos passos.
-
-⚠️ **Este esqueleto foi escrito, mas não compilado**, por uma limitação do ambiente onde foi gerado (sem acesso ao Maven Central). Ao abrir o projeto localmente, rode `mvn clean test` (ou o botão de build do IntelliJ) e reporte qualquer erro — os pontos de maior risco estão documentados em [`docs/progress/STEP-04.md`](docs/progress/STEP-04.md).
+🚧 **Passo 7 do roteiro operacional concluído** — schema SQLite, migrations e identidade local multiusuário com cadastro, login por sessão e proteção CSRF. A integração OAuth e os recursos de negócio ainda não foram implementados.
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) (um arquivo `STEP-XX.md` por etapa concluída) e o roteiro completo em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
@@ -18,7 +16,7 @@ Acompanhe o progresso em [`docs/progress/`](docs/progress) (um arquivo `STEP-XX.
 |---|---|
 | Linguagem | Java 21 (LTS) |
 | Build | Maven |
-| Framework | Spring Boot **4.1.0** (Webmvc, Security quando necessário, Validation, Actuator) |
+| Framework | Spring Boot **4.1.0** (Webmvc, Security, Validation, Actuator) |
 | Persistência | SQLite (dev) → PostgreSQL (futuro), via JPA/Hibernate 7 + Flyway |
 | Autenticação externa | OAuth 2.0 + OpenID Connect com o LinkedIn |
 | Publicação | LinkedIn **Posts API** (`/rest/posts`) — ver `docs/linkedin-capability-matrix.md` |
@@ -29,6 +27,7 @@ Acompanhe o progresso em [`docs/progress/`](docs/progress) (um arquivo `STEP-XX.
 
 ## O que este projeto faz (v1)
 
+- Permite que vários usuários criem contas locais e autentiquem-se em sessões independentes
 - Conecta a conta do LinkedIn do usuário via OAuth 2.0
 - Cria e revisa rascunhos de publicação
 - Publica texto e URLs no LinkedIn em nome do usuário, mediante aprovação explícita (produto **Share on LinkedIn**, escopo `w_member_social`)
@@ -75,7 +74,7 @@ No IntelliJ: abra o projeto como Maven (`pom.xml`), deixe indexar as dependênci
 
 Depois de validar que builda, você pode gerar o wrapper com `mvn -N wrapper:wrapper` (ou `mvn wrapper:wrapper` na raiz) para passar a usar `./mvnw` — mais consistente entre máquinas.
 
-Variáveis de ambiente necessárias (ver `.env.example` quando criado no Passo 5):
+Variáveis de ambiente necessárias (ver `.env.example`):
 
 ```
 LINKEDIN_CLIENT_ID
@@ -90,6 +89,16 @@ CORS_ALLOWED_ORIGINS
 ```
 
 Nenhuma dessas variáveis deve conter valores reais no repositório.
+
+### Autenticação local
+
+- `GET /api/v1/auth/csrf` retorna o header e o token CSRF necessários às requisições que alteram estado.
+- `POST /api/v1/auth/register` cria uma conta com `email`, `displayName` e senha (mínimo de 12 caracteres).
+- `POST /api/v1/auth/login` recebe `email` e `password`, cria uma sessão HTTP e retorna o usuário autenticado.
+- `GET /api/v1/users/me` retorna a conta associada à sessão atual.
+- `POST /api/v1/auth/logout` encerra a sessão.
+
+O cliente deve guardar o cookie de sessão com segurança e enviar o token CSRF no header indicado pela rota `/csrf`; tokens de senha nunca são devolvidos pela API. Em produção, a aplicação deve ser publicada exclusivamente por HTTPS.
 
 ## Limitações conhecidas (v1)
 

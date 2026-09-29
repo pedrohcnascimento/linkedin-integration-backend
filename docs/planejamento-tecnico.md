@@ -394,6 +394,8 @@ O agente **não deve avançar automaticamente** quando um teste falhar, uma migr
 
 ### Passo 7 — Implementar identidade local e autorização da aplicação
 **Objetivo:** cada recurso pertence a um usuário local antes de conectar ao LinkedIn.
+**Decisão:** a aplicação aceita múltiplos usuários, cada um com conta e sessão independentes. Senhas são armazenadas com hash BCrypt; a autenticação usa sessão HTTP e CSRF, sem expor credenciais ou tokens de sessão no corpo da resposta.
+**Entregáveis:** cadastro, login, logout e consulta do usuário autenticado; migration aditiva de credenciais; proteção das rotas privadas e testes de isolamento/autenticação.
 
 ### Passo 8 — Implementar o ciclo OAuth com o LinkedIn
 **Objetivo:** conectar/desconectar um membro via OAuth 2.0 sem expor credenciais.

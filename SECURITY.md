@@ -7,6 +7,9 @@ Este projeto lida com credenciais OAuth de terceiros (LinkedIn) e conteúdo publ
 ## Regras técnicas obrigatórias
 
 - **Nunca** versionar `client_secret`, access tokens, refresh tokens, `.env` real ou dumps de banco com dados reais
+- Senhas locais devem ser armazenadas somente como hashes BCrypt e nunca devem aparecer em respostas ou logs
+- Rotas autenticadas usam sessão HTTP; toda requisição que altera estado exige token CSRF
+- Cookies de sessão devem ser HttpOnly e, em produção, Secure sob HTTPS
 - Access tokens (e refresh tokens, se existirem) devem ser **cifrados em repouso**, com a chave de cifragem fora do banco de dados
 - Logs devem mascarar tokens, códigos OAuth e identificadores sensíveis — nenhum log deve conter um token em texto claro
 - O fluxo OAuth deve validar `state` de uso único (proteção CSRF) e usar `redirect_uri` exata, sem curingas
