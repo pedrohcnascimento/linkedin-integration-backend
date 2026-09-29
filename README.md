@@ -21,7 +21,7 @@ Acompanhe o progresso em [`docs/progress/`](docs/progress) (um arquivo `STEP-XX.
 | Autenticação externa | OAuth 2.0 + OpenID Connect com o LinkedIn |
 | Publicação | LinkedIn **Posts API** (`/rest/posts`) — ver `docs/linkedin-capability-matrix.md` |
 | Documentação de API | springdoc-openapi 3.x |
-| Empacotamento | Docker |
+| Empacotamento | JAR executável (Spring Boot) |
 
 > Nota de versão: o projeto usa Spring Boot 4.x porque a linha 3.5.x encerrou o suporte OSS em 25/06/2026. O Boot 4 trouxe starters modulares (`spring-boot-starter-webmvc` no lugar de `spring-boot-starter-web`, por exemplo) — se for comparar com tutoriais mais antigos, tenha isso em mente.
 
