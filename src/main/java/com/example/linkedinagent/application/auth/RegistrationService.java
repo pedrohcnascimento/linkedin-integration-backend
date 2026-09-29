@@ -1,5 +1,8 @@
 package com.example.linkedinagent.application.auth;
 
+import com.example.linkedinagent.application.ports.out.UserRegistrationPort;
+import com.example.linkedinagent.exception.EmailAlreadyRegisteredException;
+import com.example.linkedinagent.exception.PasswordTooLongException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 

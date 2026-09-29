@@ -1,5 +1,6 @@
 package com.example.linkedinagent.config;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -15,7 +16,7 @@ public class WebConfig implements WebMvcConfigurer {
     }
 
     @Override
-    public void addCorsMappings(CorsRegistry registry) {
+    public void addCorsMappings(@NonNull CorsRegistry registry) {
         String allowedOrigins = appProperties.getSecurity().getCorsAllowedOrigins();
         
         if (StringUtils.hasText(allowedOrigins)) {

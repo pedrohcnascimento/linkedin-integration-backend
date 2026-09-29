@@ -1,5 +1,6 @@
 package com.example.linkedinagent.config;
 
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -18,7 +19,7 @@ public class VerifyEnvRunner implements CommandLineRunner {
     }
 
     @Override
-    public void run(String... args) throws Exception {
+    public void run(String @NonNull ... args) {
         String clientId = appProperties.getLinkedin().getClientId();
         
         log.info("=========================================================");

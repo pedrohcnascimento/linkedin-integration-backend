@@ -1,8 +1,8 @@
 package com.example.linkedinagent.adapter.in.web;
 
 import com.example.linkedinagent.adapter.out.security.AppUserPrincipal;
-import com.example.linkedinagent.application.auth.EmailAlreadyRegisteredException;
-import com.example.linkedinagent.application.auth.PasswordTooLongException;
+import com.example.linkedinagent.exception.EmailAlreadyRegisteredException;
+import com.example.linkedinagent.exception.PasswordTooLongException;
 import com.example.linkedinagent.application.auth.RegisteredUser;
 import com.example.linkedinagent.application.auth.RegistrationService;
 import jakarta.servlet.http.HttpServletRequest;

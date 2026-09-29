@@ -56,7 +56,7 @@ public class SecurityConfig {
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             SecurityContextRepository securityContextRepository,
-            CsrfTokenRepository csrfTokenRepository) throws Exception {
+            CsrfTokenRepository csrfTokenRepository) {
         http
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository))

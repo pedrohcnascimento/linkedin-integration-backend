@@ -1,4 +1,4 @@
-package com.example.linkedinagent.application.auth;
+package com.example.linkedinagent.exception;
 
 public class EmailAlreadyRegisteredException extends RuntimeException {
     public EmailAlreadyRegisteredException() {

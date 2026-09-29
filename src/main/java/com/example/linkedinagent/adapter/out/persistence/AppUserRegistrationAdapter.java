@@ -3,7 +3,7 @@ package com.example.linkedinagent.adapter.out.persistence;
 import com.example.linkedinagent.adapter.out.persistence.entity.AppUserEntity;
 import com.example.linkedinagent.adapter.out.persistence.repository.AppUserRepository;
 import com.example.linkedinagent.application.auth.RegisteredUser;
-import com.example.linkedinagent.application.auth.UserRegistrationPort;
+import com.example.linkedinagent.application.ports.out.UserRegistrationPort;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
