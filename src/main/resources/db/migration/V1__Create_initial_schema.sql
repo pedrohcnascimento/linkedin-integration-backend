@@ -98,4 +98,3 @@ CREATE TABLE audit_event (
 CREATE INDEX idx_publication_draft_id ON publication(draft_id);
 CREATE INDEX idx_opportunity_status ON opportunity(status);
 CREATE INDEX idx_oauth_transaction_expires ON oauth_transaction(expires_at);
-
