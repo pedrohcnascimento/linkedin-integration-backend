@@ -67,6 +67,20 @@
             <version>3.53.2.0</version>
         </dependency>
 
+        <!-- Driver JDBC do PostgreSQL para o perfil prod; a versão é gerenciada pelo Spring Boot. -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Flyway separa o suporte a bancos por módulos desde a versão 10. -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- Dialeto Hibernate para SQLite (módulo "community"; Hibernate 7 via Spring Boot 4).
              NOTA DE RISCO: se o Maven reclamar de versão ausente para esta dependência,
              adicione <version>${hibernate.version}</version> ou a versão exata do Hibernate
