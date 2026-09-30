@@ -23,7 +23,7 @@ public class RateLimitService {
     private final RateLimitStore store;
 
     public RateLimitService(
-            @Qualifier("inMemoryRateLimitStore") RateLimitStore store,
+            @Qualifier("rateLimitStore") RateLimitStore store,
             @Value("${app.rate-limit.hmac-key}") String encodedHmacKey) {
         this.store = store;
         try {

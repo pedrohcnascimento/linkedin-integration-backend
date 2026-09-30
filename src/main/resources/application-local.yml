@@ -5,6 +5,11 @@ server:
         http-only: true
         same-site: lax
 
+management:
+  health:
+    redis:
+      enabled: false
+
 spring:
   datasource:
     # Default database URL for local environment

@@ -14,13 +14,13 @@ import java.time.Clock;
 @Configuration
 public class RateLimitConfiguration {
 
-    @Bean
+    @Bean(name = "rateLimitStore")
     @Profile("!prod")
     RateLimitStore inMemoryRateLimitStore(Clock clock) {
         return new InMemoryRateLimitStore(clock);
     }
 
-    @Bean
+    @Bean(name = "rateLimitStore")
     @Profile("prod")
     RateLimitStore redisRateLimitStore(
             StringRedisTemplate redisTemplate,

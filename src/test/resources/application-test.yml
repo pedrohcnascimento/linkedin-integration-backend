@@ -4,6 +4,11 @@ springdoc:
   swagger-ui:
     enabled: true
 
+management:
+  health:
+    redis:
+      enabled: false
+
 spring:
   datasource:
     url: "jdbc:sqlite::memory:"

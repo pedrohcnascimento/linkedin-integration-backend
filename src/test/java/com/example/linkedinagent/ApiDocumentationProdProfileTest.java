@@ -32,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("prod")
 class ApiDocumentationProdProfileTest {
 
-    @MockitoBean(name = "inMemoryRateLimitStore")
+    @MockitoBean(name = "rateLimitStore")
     private RateLimitStore rateLimitStore;
 
     @Autowired
