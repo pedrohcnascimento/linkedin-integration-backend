@@ -11,6 +11,13 @@ spring:
     url: ${DATABASE_URL:jdbc:sqlite:./data/linkedinagent-local.db}
     hikari:
       connection-init-sql: PRAGMA foreign_keys=ON
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
 app:
   linkedin:
     # Em local, os segredos podem estar vazios por padrao para não quebrar o startup 

@@ -11,6 +11,11 @@ server:
         same-site: lax
 
 spring:
+  springdoc:
+    api-docs:
+      enabled: false
+    swagger-ui:
+      enabled: false
   data:
     redis:
       url: ${RATE_LIMIT_REDIS_URL}
