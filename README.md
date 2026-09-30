@@ -72,7 +72,7 @@ Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem 
 | `GET /api/v1/linkedin/connection` | Sessão | Consulta o estado da conexão LinkedIn |
 | `DELETE /api/v1/linkedin/connection` | Sessão + CSRF | Remove a autorização local (`204`) |
 
-`GET /actuator/health` também está disponível para health check. A documentação interativa da API fica em `/swagger-ui.html` e o OpenAPI em `/api-docs`.
+`GET /actuator/health` também está disponível para health check. A documentação interativa da API (`/swagger-ui.html`) e o OpenAPI (`/api-docs`) são habilitados apenas nos perfis `local` e `test`; no perfil `prod`, ambos ficam desativados.
 
 ## Próximos passos
 
@@ -109,6 +109,8 @@ mvn spring-boot:run
 ```
 
 No IntelliJ: abra o projeto como Maven (`pom.xml`), deixe indexar as dependências, e rode `LinkedinAgentApplication` ou a suíte de testes pela própria IDE.
+
+Para habilitar a documentação somente em desenvolvimento, execute com `SPRING_PROFILES_ACTIVE=local` (esse já é o perfil padrão). Não habilite as propriedades `springdoc.api-docs.enabled` ou `springdoc.swagger-ui.enabled` em produção.
 
 Depois de validar que builda, você pode gerar o wrapper com `mvn -N wrapper:wrapper` (ou `mvn wrapper:wrapper` na raiz) para passar a usar `./mvnw` — mais consistente entre máquinas.
 
