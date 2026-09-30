@@ -37,8 +37,3 @@ app:
   rate-limit:
     hmac-key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
   base-url: "http://localhost:8080"
-
-management:
-  health:
-    redis:
-      enabled: false
