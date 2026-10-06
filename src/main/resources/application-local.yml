@@ -12,8 +12,8 @@ management:
 
 spring:
   datasource:
-    # Default database URL for local environment
-    url: ${DATABASE_URL:jdbc:sqlite:./data/linkedinagent-local.db}
+    # O perfil local sempre usa SQLite; DATABASE_URL fica reservado ao perfil prod.
+    url: jdbc:sqlite:./data/linkedinagent-local.db
     hikari:
       connection-init-sql: PRAGMA foreign_keys=ON
 
