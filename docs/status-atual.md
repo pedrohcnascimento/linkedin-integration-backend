@@ -12,6 +12,7 @@ Este documento consolida o estado vigente. Os relatórios em `docs/progress/` pr
 - Fluxo OAuth do LinkedIn: início, callback com `state` de uso único, consulta sanitizada da conexão e desconexão local.
 - Tokens de acesso cifrados em repouso; rate limiting para autenticação e rotas OAuth.
 - Testes automatizados locais para os fluxos implementados. O provedor LinkedIn é simulado nos testes.
+- Persistência separada por ambiente: SQLite no perfil `local` e Oracle no perfil `prod`, com migrations Flyway específicas para cada banco.
 
 ## Decisões vigentes
 
@@ -26,7 +27,7 @@ Este documento consolida o estado vigente. Os relatórios em `docs/progress/` pr
 1. Confirmar a configuração real do app, produtos, scopes e redirect URI no Developer Portal e executar um smoke test OAuth manual.
 2. Validar o projeto com JDK 21.
 3. Antes de exposição pública, validar rate limiting distribuído com Redis e o tratamento confiável do IP de origem no proxy.
-4. Executar a validação PostgreSQL prevista para o perfil de produção em um banco de teste descartável.
+4. Executar a validação Oracle prevista para o perfil de produção em um banco de teste descartável.
 5. Implementar as etapas seguintes do roteiro: adaptador de publicação (Passo 9), rascunhos/aprovação/idempotência (Passo 10), oportunidades locais (Passo 11) e, depois, API/OpenAPI, testes e hardening (Passos 12–14).
 
 Os itens 1–4 são validações pendentes; o item 5 é trabalho planejado, não funcionalidade disponível. Acompanhe alterações de estado atualizando este documento e o resumo do README.

@@ -133,15 +133,15 @@ RATE_LIMIT_REDIS_URL (somente no perfil prod)
 
 Nenhuma dessas variáveis deve conter valores reais no repositório.
 
-### PostgreSQL em produção
+### Oracle em produção
 
-O perfil `prod` usa o driver PostgreSQL empacotado pela aplicação, executa as migrations Flyway e inicia o Hibernate com `ddl-auto=validate` (não cria nem atualiza tabelas). A URL deve usar o formato `jdbc:postgresql://<host>:<porta>/<banco>`; habilite TLS conforme o serviço, por exemplo com `?sslmode=require`.
+O perfil `local` usa SQLite e o perfil `prod` usa o driver Oracle empacotado pela aplicação. Em produção, a aplicação executa as migrations Oracle do Flyway e inicia o Hibernate com `ddl-auto=validate` (não cria nem atualiza tabelas). A URL deve usar o formato Oracle aceito pelo ambiente, por exemplo `jdbc:oracle:thin:@oracle.fiap.com.br:1521:ORCL`.
 
 Configure no ambiente de execução, sem versionar credenciais:
 
 ```text
 SPRING_PROFILES_ACTIVE=prod
-DATABASE_URL=jdbc:postgresql://<host>:5432/linkedinagent?sslmode=require
+DATABASE_URL=jdbc:oracle:thin:@<host>:1521:<service-name>
 DATABASE_USERNAME=<usuario do banco>
 DATABASE_PASSWORD=<senha do banco>
 LINKEDIN_CLIENT_ID=<client id>

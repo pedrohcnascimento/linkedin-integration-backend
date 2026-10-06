@@ -80,10 +80,23 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Driver JDBC Oracle usado pelo perfil prod. -->
+        <dependency>
+            <groupId>com.oracle.database.jdbc</groupId>
+            <artifactId>ojdbc11</artifactId>
+            <version>23.26.3.0.0</version>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- Flyway separa o suporte a bancos por módulos desde a versão 10. -->
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-database-postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-oracle</artifactId>
             <scope>runtime</scope>
         </dependency>
 
