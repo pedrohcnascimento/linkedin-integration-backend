@@ -53,7 +53,11 @@ class ApiDocumentationLocalProfileTest {
                 .andExpect(jsonPath("$.paths['/api/v1/drafts'].get.description",
                         containsString("somente drafts pertencentes")))
                 .andExpect(jsonPath("$.paths['/api/v1/drafts/{id}'].patch.description",
-                        containsString("Só funciona enquanto o draft estiver em DRAFT")));
+                        containsString("Só funciona enquanto o draft estiver em DRAFT")))
+                .andExpect(jsonPath("$.components.schemas.CreateDraftRequest.properties.mediaCategory.example",
+                        org.hamcrest.Matchers.is("NONE")))
+                .andExpect(jsonPath("$.paths['/api/v1/drafts'].post.requestBody.content['application/json'].examples['Draft textual válido'].value.mediaCategory",
+                        org.hamcrest.Matchers.is("NONE")));
     }
 
     @Test

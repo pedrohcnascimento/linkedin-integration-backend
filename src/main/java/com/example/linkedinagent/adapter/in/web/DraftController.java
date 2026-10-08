@@ -8,6 +8,11 @@ import com.example.linkedinagent.application.publishing.DraftWorkflowService;
 import com.example.linkedinagent.application.publishing.LinkedInPublishingException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -44,9 +49,25 @@ public class DraftController {
     }
 
     @PostMapping("/drafts")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Draft textual criado."),
+            @ApiResponse(responseCode = "401", description = "Sessão local ausente."),
+            @ApiResponse(responseCode = "422", description = "Conteúdo de mídia ainda não suportado; use mediaCategory NONE e deixe originalUrl vazio."),
+            @ApiResponse(responseCode = "403", description = "Token CSRF ausente ou expirado; execute GET /api/v1/auth/csrf e tente novamente.")
+    })
     public ResponseEntity<DraftResponse> create(
             @AuthenticationPrincipal AppUserPrincipal user,
-            @Valid @RequestBody CreateDraftRequest request) {
+            @Valid @RequestBody @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(mediaType = "application/json", examples = @ExampleObject(
+                            name = "Draft textual válido",
+                            value = """
+                                    {
+                                      "text": "Minha primeira publicação pelo LinkedIn Integration Backend.",
+                                      "mediaCategory": "NONE",
+                                      "title": "Minha primeira publicação"
+                                    }
+                                    """))) CreateDraftRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toResponse(workflowService.createDraft(
                         user.getId(), request.text(), request.mediaCategory(), request.originalUrl(), request.title())));
@@ -70,10 +91,25 @@ public class DraftController {
 
     @PatchMapping("/drafts/{id}")
     @Operation(summary = "Editar um draft", description = "Atualiza parcialmente texto ou título. Só funciona enquanto o draft estiver em DRAFT; depois da aprovação ele não pode mais ser editado.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Draft atualizado."),
+            @ApiResponse(responseCode = "409", description = "O draft já foi aprovado e não pode mais ser editado."),
+            @ApiResponse(responseCode = "422", description = "Conteúdo de mídia ainda não suportado."),
+            @ApiResponse(responseCode = "403", description = "Token CSRF ausente ou expirado.")
+    })
     public DraftResponse update(
             @AuthenticationPrincipal AppUserPrincipal user,
             @PathVariable UUID id,
-            @Valid @RequestBody EditDraftRequest request) {
+            @Valid @RequestBody @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(mediaType = "application/json", examples = @ExampleObject(
+                            name = "Edição textual válida",
+                            value = """
+                                    {
+                                      "text": "Conteúdo atualizado",
+                                      "title": "Título atualizado"
+                                    }
+                                    """))) EditDraftRequest request) {
         return toResponse(workflowService.update(user.getId(), id, request.text(), request.mediaCategory(),
                 request.originalUrl(), request.title()));
     }
@@ -129,17 +165,33 @@ public class DraftController {
     }
 
     public record CreateDraftRequest(
-            @NotBlank @Size(max = 3000) String text,
-            @Size(max = 40) String mediaCategory,
-            @Size(max = 2000) String originalUrl,
-            @Size(max = 300) String title) {
+            @NotBlank @Size(max = 3000)
+            @Schema(description = "Texto que será publicado no LinkedIn.", example = "Minha primeira publicação pelo LinkedIn Integration Backend.")
+            String text,
+            @Size(max = 40)
+            @Schema(description = "Categoria de mídia. Para drafts textuais, use NONE.", example = "NONE", allowableValues = {"NONE"})
+            String mediaCategory,
+            @Size(max = 2000)
+            @Schema(description = "Deixe vazio ou omita enquanto mídia e artigos não estiverem habilitados.", example = "")
+            String originalUrl,
+            @Size(max = 300)
+            @Schema(description = "Título opcional do draft.", example = "Minha primeira publicação")
+            String title) {
     }
 
     public record EditDraftRequest(
-            @Size(max = 3000) String text,
-            @Size(max = 40) String mediaCategory,
-            @Size(max = 2000) String originalUrl,
-            @Size(max = 300) String title) {
+            @Size(max = 3000)
+            @Schema(description = "Novo texto; omita para preservar o texto atual.", example = "Conteúdo atualizado")
+            String text,
+            @Size(max = 40)
+            @Schema(description = "Para drafts textuais, use NONE.", example = "NONE", allowableValues = {"NONE"})
+            String mediaCategory,
+            @Size(max = 2000)
+            @Schema(description = "Deixe vazio ou omita enquanto mídia e artigos não estiverem habilitados.", example = "")
+            String originalUrl,
+            @Size(max = 300)
+            @Schema(description = "Novo título; omita para preservar o título atual.", example = "Título atualizado")
+            String title) {
     }
 
     public record DraftResponse(UUID id, String text, String mediaCategory, String originalUrl, String title, String status,
