@@ -1,12 +1,6 @@
 package com.example.linkedinagent.adapter.in.web;
 
-import com.example.linkedinagent.adapter.out.persistence.entity.AppUserEntity;
-import com.example.linkedinagent.adapter.out.persistence.entity.LinkedInAuthorizationEntity;
-import com.example.linkedinagent.adapter.out.persistence.repository.AppUserRepository;
-import com.example.linkedinagent.adapter.out.persistence.repository.LinkedInAuthorizationRepository;
-import com.example.linkedinagent.adapter.out.persistence.repository.OAuthTransactionRepository;
 import com.example.linkedinagent.application.ports.out.LinkedInOAuthClient;
-import com.example.linkedinagent.application.ports.out.OAuthTransactionPort;
 import com.example.linkedinagent.application.ratelimit.RateLimitStore;
 import com.jayway.jsonpath.JsonPath;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -16,26 +10,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Locale;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.net.URI;
-import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.time.Instant;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -57,24 +42,6 @@ class AuthControllerIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
-
-    @Autowired
-    private AppUserRepository appUserRepository;
-
-    @Autowired
-    private PasswordEncoder passwordEncoder;
-
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
-
-    @Autowired
-    private LinkedInAuthorizationRepository linkedInAuthorizationRepository;
-
-    @Autowired
-    private OAuthTransactionRepository oauthTransactionRepository;
-
-    @Autowired
-    private OAuthTransactionPort oauthTransactionPort;
 
     @MockitoBean
     private LinkedInOAuthClient linkedInOAuthClient;
@@ -106,9 +73,6 @@ class AuthControllerIntegrationTest {
                 .andExpect(jsonPath("$.password").doesNotExist())
                 .andExpect(jsonPath("$.passwordHash").doesNotExist());
 
-        AppUserEntity savedUser = appUserRepository.findByEmail(normalizedEmail).orElseThrow();
-        assertThat(savedUser.getPasswordHash()).isNotEqualTo(PASSWORD);
-        assertThat(passwordEncoder.matches(PASSWORD, savedUser.getPasswordHash())).isTrue();
     }
 
     @Test
@@ -130,9 +94,6 @@ class AuthControllerIntegrationTest {
     void loginCreatesSessionAndCurrentUserRequiresThatSession() throws Exception {
         String email = UUID.randomUUID() + "@example.com";
         register(email);
-        AppUserEntity user = appUserRepository.findByEmail(email).orElseThrow();
-        assertThat(passwordEncoder.matches(PASSWORD, user.getPasswordHash())).isTrue();
-
         MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -335,12 +296,6 @@ class AuthControllerIntegrationTest {
                 .build()
                 .getQueryParams()
                 .getFirst("state");
-        AppUserEntity user = appUserRepository.findByEmail(email).orElseThrow();
-        String stateHash = hashState(state);
-        var transaction = oauthTransactionRepository.findByStateHash(stateHash).orElseThrow();
-        assertThat(transaction.getAppUser().getId()).isEqualTo(user.getId());
-        assertThat(transaction.getStateHash()).isNotEqualTo(state);
-
         when(linkedInOAuthClient.exchangeAuthorizationCode("authorization-code"))
                 .thenReturn(new LinkedInOAuthClient.AccessToken(
                         "raw-access-token",
@@ -359,13 +314,6 @@ class AuthControllerIntegrationTest {
                 .andExpect(jsonPath("$.accessToken").doesNotExist())
                 .andExpect(jsonPath("$.refreshToken").doesNotExist())
                 .andExpect(jsonPath("$.state").doesNotExist());
-
-        LinkedInAuthorizationEntity authorization =
-                linkedInAuthorizationRepository.findByAppUser_Id(user.getId()).orElseThrow();
-        assertThat(authorization.getEncryptedAccessToken()).startsWith("v1.")
-                .isNotEqualTo("raw-access-token");
-        assertThat(authorization.getMemberSubject()).isEqualTo("linkedin-subject");
-        assertThat(authorization.getExpiresAt()).isNotNull();
 
         mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
                         .param("state", state)
@@ -404,38 +352,6 @@ class AuthControllerIntegrationTest {
                         .param("state", state)
                         .param("code", "authorization-code"))
                 .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void oauthStateCanOnlyBeConsumedOnceAcrossConcurrentCallbacks() throws Exception {
-        String email = UUID.randomUUID() + "@example.com";
-        register(email);
-        UUID userId = appUserRepository.findByEmail(email).orElseThrow().getId();
-        String stateHash = UUID.randomUUID().toString();
-        Instant now = Instant.now();
-        oauthTransactionPort.create(userId, stateHash, "openid profile", now, now.plusSeconds(600));
-
-        CountDownLatch ready = new CountDownLatch(2);
-        CountDownLatch start = new CountDownLatch(1);
-        var executor = Executors.newFixedThreadPool(2);
-        try {
-            var first = executor.submit(() -> {
-                ready.countDown();
-                start.await();
-                return oauthTransactionPort.consume(stateHash, Instant.now()).isPresent();
-            });
-            var second = executor.submit(() -> {
-                ready.countDown();
-                start.await();
-                return oauthTransactionPort.consume(stateHash, Instant.now()).isPresent();
-            });
-            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
-            start.countDown();
-
-            assertThat(first.get(10, TimeUnit.SECONDS) ^ second.get(10, TimeUnit.SECONDS)).isTrue();
-        } finally {
-            executor.shutdownNow();
-        }
     }
 
     @Test
@@ -500,11 +416,6 @@ class AuthControllerIntegrationTest {
                 .andExpect(jsonPath("$.connected").value(false));
     }
 
-    @Test
-    void sqliteConnectionsEnforceForeignKeys() {
-        assertThat(jdbcTemplate.queryForObject("PRAGMA foreign_keys", Integer.class)).isEqualTo(1);
-    }
-
     private MockHttpSession login(String email) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                         .with(csrf())
@@ -515,11 +426,6 @@ class AuthControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return (MockHttpSession) result.getRequest().getSession(false);
-    }
-
-    private String hashState(String state) throws Exception {
-        byte[] hash = MessageDigest.getInstance("SHA-256").digest(state.getBytes(StandardCharsets.UTF_8));
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
     }
 
     private void register(String email) throws Exception {

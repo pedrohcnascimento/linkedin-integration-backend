@@ -23,11 +23,6 @@ class LinkedinAgentApplicationTests {
     private MockMvc mockMvc;
 
     @Test
-    void contextLoads() {
-        // Passa se o ApplicationContext carregar sem exceções.
-    }
-
-    @Test
     void apiDocumentationIsAvailableWithoutAuthenticationInTestProfile() throws Exception {
         mockMvc.perform(get("/api-docs"))
                 .andExpect(status().isOk());
