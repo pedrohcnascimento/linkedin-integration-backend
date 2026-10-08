@@ -11,14 +11,19 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
@@ -41,6 +46,30 @@ public class DraftController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toResponse(workflowService.createDraft(
                         user.getId(), request.text(), request.mediaCategory(), request.originalUrl(), request.title())));
+    }
+
+    @GetMapping("/drafts")
+    public DraftPageResponse list(
+            @AuthenticationPrincipal AppUserPrincipal user,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        if (page < 0 || size < 1 || size > 50) {
+            throw new DraftWorkflowException("INVALID_PAGINATION",
+                    "Page must be non-negative and size must be between 1 and 50.", HttpStatus.BAD_REQUEST);
+        }
+        Page<ContentDraftEntity> drafts = workflowService.list(user.getId(),
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt")));
+        return new DraftPageResponse(drafts.getContent().stream().map(this::toResponse).toList(),
+                drafts.getNumber(), drafts.getSize(), drafts.getTotalElements(), drafts.getTotalPages());
+    }
+
+    @PatchMapping("/drafts/{id}")
+    public DraftResponse update(
+            @AuthenticationPrincipal AppUserPrincipal user,
+            @PathVariable UUID id,
+            @Valid @RequestBody EditDraftRequest request) {
+        return toResponse(workflowService.update(user.getId(), id, request.text(), request.mediaCategory(),
+                request.originalUrl(), request.title()));
     }
 
     @PostMapping("/drafts/{id}/approve")
@@ -79,7 +108,8 @@ public class DraftController {
     }
 
     private DraftResponse toResponse(ContentDraftEntity draft) {
-        return new DraftResponse(draft.getId(), draft.getText(), draft.getMediaCategory(), draft.getStatus(),
+        return new DraftResponse(draft.getId(), draft.getText(), draft.getMediaCategory(), draft.getOriginalUrl(),
+                draft.getTitle(), draft.getStatus(),
                 draft.getApprovedAt(), draft.getCreatedAt(), draft.getUpdatedAt());
     }
 
@@ -96,8 +126,19 @@ public class DraftController {
             @Size(max = 300) String title) {
     }
 
-    public record DraftResponse(UUID id, String text, String mediaCategory, String status,
+    public record EditDraftRequest(
+            @Size(max = 3000) String text,
+            @Size(max = 40) String mediaCategory,
+            @Size(max = 2000) String originalUrl,
+            @Size(max = 300) String title) {
+    }
+
+    public record DraftResponse(UUID id, String text, String mediaCategory, String originalUrl, String title, String status,
                                 Instant approvedAt, Instant createdAt, Instant updatedAt) {
+    }
+
+    public record DraftPageResponse(java.util.List<DraftResponse> content, int page, int size,
+                                    long totalElements, int totalPages) {
     }
 
     public record PublicationResponse(UUID id, UUID draftId, String externalPostId, String status,

@@ -1,6 +1,6 @@
 # STEP-10 — Rascunho aprovado e idempotência (entrega 1)
 
-**Status:** em andamento. O fluxo mínimo criar → aprovar → publicar já está disponível e validado por testes HTTP; a edição/listagem de drafts, histórico paginado e endurecimento de concorrência ficam para as próximas entregas.
+**Status:** em andamento. O fluxo criar → listar → editar → aprovar → publicar já está disponível e validado por testes HTTP; histórico paginado e endurecimento de concorrência ficam para as próximas entregas.
 
 ## Implementado
 
@@ -12,13 +12,15 @@ A impressão digital combina usuário, rascunho, instante de aprovação e chave
 
 A entrega inicial aceita somente rascunhos textuais. Conteúdo de artigo, imagem, vídeo e outros tipos permanecem fora do escopo até haver adaptadores e contratos próprios.
 
+A listagem `GET /api/v1/drafts?page=0&size=20` é paginada, ordenada pelo `updatedAt` descendente e limitada ao usuário autenticado. O tamanho máximo de página é 50. A edição `PATCH /api/v1/drafts/{id}` aceita atualização parcial de texto e título; somente drafts em `DRAFT` podem ser editados, preservando a fingerprint após aprovação.
+
 ## Testes
 
 A suíte completa passou com 38 testes, sem falhas ou erros. Os testes HTTP cobrem publicação idempotente, pré-condição de aprovação, exigência do header e isolamento por proprietário. Também foram validados compilação, empacotamento e `git diff --check`.
 
 ## Pendências
 
-1. Adicionar edição e listagem paginada de rascunhos e histórico de publicações.
+1. Adicionar histórico paginado de publicações.
 2. Cobrir falha externa com persistência de `FAILED` e retry seguro.
 3. Tratar concorrência de duas requisições simultâneas com o mesmo `Idempotency-Key` em banco real, incluindo estratégia compatível com SQLite e Oracle.
 4. Documentar os novos endpoints no OpenAPI, previsto no Passo 12.

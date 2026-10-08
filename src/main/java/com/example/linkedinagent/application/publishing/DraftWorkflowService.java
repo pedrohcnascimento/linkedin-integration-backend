@@ -11,6 +11,8 @@ import com.example.linkedinagent.application.ports.out.TokenCipherPort;
 import com.example.linkedinagent.domain.publishing.LinkedInPublicationCommand;
 import com.example.linkedinagent.domain.publishing.PublicationResult;
 import org.springframework.http.HttpStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -84,6 +86,46 @@ public class DraftWorkflowService {
         draft.setStatus("APPROVED");
         draft.setApprovedAt(now);
         draft.setUpdatedAt(now);
+        return draftRepository.saveAndFlush(draft);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ContentDraftEntity> list(UUID appUserId, Pageable pageable) {
+        return draftRepository.findAllByAppUser_Id(appUserId, pageable);
+    }
+
+    @Transactional
+    public ContentDraftEntity update(UUID appUserId, UUID draftId, String text, String mediaCategory,
+                                     String originalUrl, String title) {
+        ContentDraftEntity draft = ownedDraft(appUserId, draftId);
+        if (!"DRAFT".equals(draft.getStatus())) {
+            throw error("DRAFT_INVALID_STATE", "Only a DRAFT can be edited.", HttpStatus.CONFLICT);
+        }
+        if (text == null && mediaCategory == null && originalUrl == null && title == null) {
+            throw error("INVALID_DRAFT_UPDATE", "At least one draft field must be provided.", HttpStatus.BAD_REQUEST);
+        }
+        if (text != null) {
+            if (text.isBlank()) {
+                throw error("INVALID_DRAFT", "Draft text cannot be blank.", HttpStatus.BAD_REQUEST);
+            }
+            draft.setText(text.trim());
+        }
+        if (mediaCategory != null) {
+            if (!mediaCategory.isBlank() && !"NONE".equals(mediaCategory)) {
+                throw error("DRAFT_MEDIA_UNSUPPORTED", "Only text drafts are supported in this release.", HttpStatus.UNPROCESSABLE_ENTITY);
+            }
+            draft.setMediaCategory("NONE");
+        }
+        if (originalUrl != null) {
+            if (!originalUrl.isBlank()) {
+                throw error("DRAFT_MEDIA_UNSUPPORTED", "Article content is not supported in this release.", HttpStatus.UNPROCESSABLE_ENTITY);
+            }
+            draft.setOriginalUrl(null);
+        }
+        if (title != null) {
+            draft.setTitle(title.isBlank() ? null : title.trim());
+        }
+        draft.setUpdatedAt(clock.instant());
         return draftRepository.saveAndFlush(draft);
     }
 

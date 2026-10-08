@@ -119,6 +119,62 @@ class DraftControllerIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void draftsAreListedInPagesAndOnlyForTheAuthenticatedOwner() throws Exception {
+        MockHttpSession firstSession = loginAndRegister();
+        createDraft(firstSession);
+        createDraft(firstSession);
+        MockHttpSession secondSession = loginAndRegister();
+        createDraft(secondSession);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/v1/drafts").session(firstSession).param("page", "0").param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(1))
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.totalPages").value(2));
+    }
+
+    @Test
+    void draftCanBeEditedOnlyBeforeApproval() throws Exception {
+        MockHttpSession session = loginAndRegister();
+        UUID draftId = createDraft(session);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch("/api/v1/drafts/{id}", draftId).session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"text":"Updated content","title":"Updated title"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.text").value("Updated content"))
+                .andExpect(jsonPath("$.title").value("Updated title"))
+                .andExpect(jsonPath("$.status").value("DRAFT"));
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", draftId)
+                        .session(session).with(csrf()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch("/api/v1/drafts/{id}", draftId).session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"Must be rejected\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DRAFT_INVALID_STATE"));
+    }
+
+    @Test
+    void paginationRejectsUnsafePageSize() throws Exception {
+        MockHttpSession session = loginAndRegister();
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/v1/drafts").session(session).param("size", "51"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PAGINATION"));
+    }
+
     private UUID createDraft(MockHttpSession session) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/drafts")
                         .session(session).with(csrf())

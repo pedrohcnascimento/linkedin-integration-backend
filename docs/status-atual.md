@@ -15,14 +15,14 @@ Este documento consolida o estado vigente. Os relatórios em `docs/progress/` pr
 - Testes automatizados locais para os fluxos implementados. O provedor LinkedIn é simulado nos testes.
 - Persistência separada por ambiente: SQLite no perfil `local` e Oracle no perfil `prod`, com migrations Flyway específicas para cada banco.
 - Fundação do adaptador da Posts API: publicação textual de membro, versão configurável, headers oficiais e captura de `x-restli-id`.
-- Fluxo mínimo de drafts: criação textual, aprovação, publicação autenticada e replay idempotente por `Idempotency-Key`.
+- Fluxo de drafts: criação textual, listagem paginada, edição antes da aprovação, aprovação, publicação autenticada e replay idempotente por `Idempotency-Key`.
 
 ## Decisões vigentes
 
 - **Licença:** MIT; o arquivo `LICENSE` contém o nome do titular.
 - **Publicação futura:** usar LinkedIn Posts API (`POST /rest/posts`), não a UGC Post API legada. A versão mensal `Linkedin-Version` deverá ser configurável. Ver a decisão detalhada na [matriz de capacidades](linkedin-capability-matrix.md).
 - **Refresh e revogação:** não presumir refresh token nem revogação remota; nenhum dos dois está implementado.
-- **Escopo funcional atual:** drafts textuais podem ser criados, aprovados e publicados uma vez com idempotência; edição, listagem paginada, histórico completo, mídia e oportunidades ainda não estão disponíveis.
+- **Escopo funcional atual:** drafts textuais podem ser criados, listados, editados antes da aprovação, aprovados e publicados uma vez com idempotência; histórico completo, mídia e oportunidades ainda não estão disponíveis.
 - **Empacotamento:** JAR executável Spring Boot; Docker não está implementado.
 
 ## Pendências abertas
