@@ -49,6 +49,8 @@ app:
     client-secret: ${LINKEDIN_CLIENT_SECRET}
     redirect-uri: ${LINKEDIN_REDIRECT_URI}
     scopes: ${LINKEDIN_SCOPES:openid profile w_member_social}
+    api-base-url: ${LINKEDIN_API_BASE_URL:https://api.linkedin.com}
+    api-version: ${LINKEDIN_API_VERSION:202609}
   security:
     token-encryption-key: ${TOKEN_ENCRYPTION_KEY}
     cors-allowed-origins: ${CORS_ALLOWED_ORIGINS}

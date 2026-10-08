@@ -1,8 +1,8 @@
 # Status atual do projeto
 
 **Atualizado em:** 08/10/2026
-**Etapa atual:** Passo 8 concluído — preparação do Passo 9
-**Referência de implementação:** [`docs/progress/STEP-08.md`](progress/STEP-08.md)
+**Etapa atual:** Passo 9 em andamento — adaptador de publicação
+**Referência de implementação:** [`docs/progress/STEP-09.md`](progress/STEP-09.md)
 
 Este documento consolida o estado vigente. Os relatórios em `docs/progress/` preservam o registro original de cada etapa e podem conter decisões ou pendências que já foram superadas.
 
@@ -14,6 +14,7 @@ Este documento consolida o estado vigente. Os relatórios em `docs/progress/` pr
 - Tokens de acesso cifrados em repouso; rate limiting para autenticação e rotas OAuth.
 - Testes automatizados locais para os fluxos implementados. O provedor LinkedIn é simulado nos testes.
 - Persistência separada por ambiente: SQLite no perfil `local` e Oracle no perfil `prod`, com migrations Flyway específicas para cada banco.
+- Fundação do adaptador da Posts API: publicação textual de membro, versão configurável, headers oficiais e captura de `x-restli-id`.
 
 ## Decisões vigentes
 
@@ -28,9 +29,10 @@ Este documento consolida o estado vigente. Os relatórios em `docs/progress/` pr
 1. Validar o projeto com JDK 21 no ambiente-alvo, caso a execução de produção use uma instalação diferente.
 2. Antes de exposição pública, validar rate limiting distribuído com Redis e o tratamento confiável do IP de origem no proxy.
 3. Executar a validação Oracle prevista para o perfil de produção em um banco de teste descartável.
-4. Implementar as etapas seguintes do roteiro: adaptador de publicação (Passo 9), rascunhos/aprovação/idempotência (Passo 10), oportunidades locais (Passo 11) e, depois, API/OpenAPI, testes e hardening (Passos 12–14).
+4. Concluir o Passo 9 com o caso de uso de publicação e integração ao fluxo aprovado.
+5. Implementar rascunhos/aprovação/idempotência (Passo 10), oportunidades locais (Passo 11) e, depois, API/OpenAPI, testes e hardening (Passos 12–14).
 
-Os itens 1–3 são validações pendentes; o item 4 é trabalho planejado, não funcionalidade disponível. Acompanhe alterações de estado atualizando este documento e o resumo do README.
+Os itens 1–3 são validações pendentes; os itens 4–5 são trabalho planejado, e a fundação do Passo 9 ainda não é uma funcionalidade pública disponível. Acompanhe alterações de estado atualizando este documento e o resumo do README.
 
 ## Precedência documental
 

@@ -32,6 +32,8 @@ public class AppProperties {
         private String clientSecret;
         private String redirectUri;
         private String scopes = "openid profile w_member_social";
+        private String apiBaseUrl = "https://api.linkedin.com";
+        private String apiVersion = "202609";
 
         public String getClientId() {
             return clientId;
@@ -63,6 +65,22 @@ public class AppProperties {
 
         public void setScopes(String scopes) {
             this.scopes = scopes;
+        }
+
+        public String getApiBaseUrl() {
+            return apiBaseUrl;
+        }
+
+        public void setApiBaseUrl(String apiBaseUrl) {
+            this.apiBaseUrl = apiBaseUrl;
+        }
+
+        public String getApiVersion() {
+            return apiVersion;
+        }
+
+        public void setApiVersion(String apiVersion) {
+            this.apiVersion = apiVersion;
         }
     }
 
