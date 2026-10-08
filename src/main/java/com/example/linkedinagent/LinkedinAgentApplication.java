@@ -40,7 +40,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
                 2. Execute `POST /api/v1/auth/register` e depois `POST /api/v1/auth/login` usando a mesma sessão do navegador. O login renova o cookie CSRF automaticamente.
                 3. Execute `GET /api/v1/drafts` para listar somente os drafts do usuário autenticado. Use `page` começando em `0` e `size` entre `1` e `50`.
                 4. Execute `POST /api/v1/drafts` para criar um draft textual. O Swagger local envia `X-XSRF-TOKEN` automaticamente a partir do cookie.
-                5. Copie o campo `id` retornado pelo `POST /api/v1/drafts` ou por `GET /api/v1/drafts` e substitua `{id}` pelo UUID real no `PATCH /api/v1/drafts/{id}`. Não use o UUID de exemplo `3fa85f64-5717-4562-b3fc-2c963f66afa6`; ele é apenas um placeholder do Swagger. O draft precisa ainda estar em `DRAFT`; após a aprovação, a edição é bloqueada.
+                5. Na mesma sessão autenticada, copie o campo `id` retornado pelo `POST /api/v1/drafts` ou por `GET /api/v1/drafts` e substitua `{id}` pelo UUID real no `PATCH /api/v1/drafts/{id}`. Não use o UUID de exemplo `3fa85f64-5717-4562-b3fc-2c963f66afa6`; ele é apenas um placeholder do Swagger. Se o GET e o PATCH forem feitos com usuários ou sessões diferentes, a API retorna `404` por isolamento de dados. O draft precisa ainda estar em `DRAFT`; após a aprovação, a edição é bloqueada.
                 6. Se uma operação que altera dados retornar `403`, execute novamente `GET /api/v1/auth/csrf` e tente a operação outra vez. Não copie o token para o corpo JSON; ele deve ser enviado no header CSRF.
                 """))
 public class LinkedinAgentApplication {

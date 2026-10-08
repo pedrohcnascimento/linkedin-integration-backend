@@ -27,6 +27,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -163,6 +165,25 @@ class DraftControllerIntegrationTest {
                         .content("{\"text\":\"Must be rejected\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("DRAFT_INVALID_STATE"));
+    }
+
+    @Test
+    void draftIdReturnedByListCanBeEditedInTheSameAuthenticatedSession() throws Exception {
+        MockHttpSession session = loginAndRegister();
+        createDraft(session);
+
+        MvcResult list = mockMvc.perform(get("/api/v1/drafts").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andReturn();
+        String id = com.jayway.jsonpath.JsonPath.read(list.getResponse().getContentAsString(), "$.content[0].id");
+
+        mockMvc.perform(patch("/api/v1/drafts/{id}", id).session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"Updated from listed id\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id))
+                .andExpect(jsonPath("$.text").value("Updated from listed id"));
     }
 
     @Test
