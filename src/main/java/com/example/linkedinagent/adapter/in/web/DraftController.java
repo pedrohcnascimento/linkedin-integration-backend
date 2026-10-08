@@ -90,15 +90,17 @@ public class DraftController {
     }
 
     @PatchMapping("/drafts/{id}")
-    @Operation(summary = "Editar um draft", description = "Atualiza parcialmente texto ou título. Só funciona enquanto o draft estiver em DRAFT; depois da aprovação ele não pode mais ser editado.")
+    @Operation(summary = "Editar um draft", description = "Atualiza parcialmente texto ou título. Use no caminho o id real retornado pelo POST /api/v1/drafts ou GET /api/v1/drafts; o UUID 3fa85f64-5717-4562-b3fc-2c963f66afa6 exibido pelo Swagger é apenas um exemplo. Só funciona enquanto o draft estiver em DRAFT; depois da aprovação ele não pode mais ser editado.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Draft atualizado."),
+            @ApiResponse(responseCode = "404", description = "Draft não encontrado para o usuário autenticado; confirme o UUID retornado pelo POST ou GET."),
             @ApiResponse(responseCode = "409", description = "O draft já foi aprovado e não pode mais ser editado."),
             @ApiResponse(responseCode = "422", description = "Conteúdo de mídia ainda não suportado."),
             @ApiResponse(responseCode = "403", description = "Token CSRF ausente ou expirado.")
     })
     public DraftResponse update(
             @AuthenticationPrincipal AppUserPrincipal user,
+            @Parameter(description = "UUID real do draft retornado pelo POST ou GET. Não use o UUID de exemplo do Swagger.", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
             @PathVariable UUID id,
             @Valid @RequestBody @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     required = true,
