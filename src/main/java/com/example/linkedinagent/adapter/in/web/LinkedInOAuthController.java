@@ -9,6 +9,8 @@ import com.example.linkedinagent.application.linkedin.LinkedInProviderException;
 import com.example.linkedinagent.application.linkedin.TokenEncryptionException;
 import com.example.linkedinagent.application.ratelimit.RateLimitService;
 import jakarta.servlet.http.HttpServletRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -27,6 +29,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/linkedin")
+@Tag(name = "LinkedIn OAuth", description = "Conexão autorizada com o LinkedIn. O fluxo começa no navegador e termina no callback.")
 public class LinkedInOAuthController {
 
     private final LinkedInOAuthService oauthService;
@@ -38,6 +41,15 @@ public class LinkedInOAuthController {
     }
 
     @GetMapping("/oauth/start")
+    @Operation(summary = "Iniciar autorização do LinkedIn", description = """
+            Use somente depois de fazer login local com `POST /api/v1/auth/login` e confirmar a sessão em `GET /api/v1/users/me`.
+
+            Esta operação responde com `302 Found` e um header `Location` contendo a URL de autorização do LinkedIn. Copie essa URL completa e abra-a diretamente na barra de endereço do navegador, na mesma sessão em que o login local foi feito. Não use o botão `Execute` do Swagger para seguir o redirect externo: o Swagger usa `fetch` e pode exibir `Failed to fetch` por causa do CORS do LinkedIn.
+
+            Na tela do LinkedIn, faça login, autorize o aplicativo e aguarde o redirecionamento automático para `/api/v1/linkedin/oauth/callback?code=...&state=...`. Gere uma URL nova a cada tentativa; o `state` expira em 10 minutos e só pode ser usado uma vez.
+
+            Pré-requisitos no perfil local: `TOKEN_ENCRYPTION_KEY` configurada, redirect URI `http://localhost:8080/api/v1/linkedin/oauth/callback` cadastrada exatamente no Developer Portal e os produtos **Sign In with LinkedIn using OpenID Connect** e **Share on LinkedIn** habilitados.
+            """)
     public ResponseEntity<Void> start(
             @AuthenticationPrincipal AppUserPrincipal user,
             HttpServletRequest request) {
@@ -54,6 +66,11 @@ public class LinkedInOAuthController {
     }
 
     @GetMapping("/oauth/callback")
+    @Operation(summary = "Callback do LinkedIn", description = """
+            Endpoint chamado pelo LinkedIn após a autorização. Não invente nem edite `code` ou `state`; o navegador deve chegar aqui automaticamente.
+
+            Em caso de sucesso, o access token é cifrado e armazenado localmente e a resposta retorna a conexão sanitizada. Em caso de recusa, o LinkedIn pode enviar `error=...`; nesse caso a API retorna `400`.
+            """)
     public ResponseEntity<?> callback(
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String state,
@@ -78,6 +95,7 @@ public class LinkedInOAuthController {
     }
 
     @GetMapping("/connection")
+    @Operation(summary = "Consultar conexão atual", description = "Execute depois que o callback terminar. `connected: true` e `status: ACTIVE` confirmam que o OAuth foi concluído. `DISCONNECTED` significa que ainda não houve uma autorização concluída para o usuário local autenticado.")
     public ConnectionResponse connection(@AuthenticationPrincipal AppUserPrincipal user) {
         return oauthService.connection(user.getId())
                 .map(ConnectionResponse::from)
@@ -85,6 +103,7 @@ public class LinkedInOAuthController {
     }
 
     @DeleteMapping("/connection")
+    @Operation(summary = "Desconectar LinkedIn", description = "Remove localmente a autorização armazenada para o usuário autenticado. Exige sessão local e CSRF. Esta operação não afirma revogação remota no LinkedIn.")
     public ResponseEntity<Void> disconnect(@AuthenticationPrincipal AppUserPrincipal user) {
         oauthService.disconnect(user.getId());
         return ResponseEntity.noContent().build();
