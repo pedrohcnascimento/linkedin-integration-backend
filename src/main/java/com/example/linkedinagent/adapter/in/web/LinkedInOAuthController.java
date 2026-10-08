@@ -118,7 +118,7 @@ public class LinkedInOAuthController {
     @ExceptionHandler(LinkedInProviderException.class)
     public ResponseEntity<ApiError> handleProviderError(LinkedInProviderException exception) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                .body(new ApiError("LINKEDIN_PROVIDER_ERROR", exception.getMessage()));
+                .body(new ApiError("LINKEDIN_PROVIDER_ERROR", "LinkedIn provider request failed."));
     }
 
     @ExceptionHandler(TokenEncryptionException.class)

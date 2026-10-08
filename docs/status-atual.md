@@ -1,7 +1,7 @@
 # Status atual do projeto
 
-**Atualizado em:** 29/09/2026  
-**Etapa atual:** Passo 8 — ciclo OAuth com o LinkedIn  
+**Atualizado em:** 08/10/2026
+**Etapa atual:** Passo 8 concluído — preparação do Passo 9
 **Referência de implementação:** [`docs/progress/STEP-08.md`](progress/STEP-08.md)
 
 Este documento consolida o estado vigente. Os relatórios em `docs/progress/` preservam o registro original de cada etapa e podem conter decisões ou pendências que já foram superadas.
@@ -10,6 +10,7 @@ Este documento consolida o estado vigente. Os relatórios em `docs/progress/` pr
 
 - Cadastro de usuários locais, autenticação por sessão, consulta do usuário autenticado, logout e proteção CSRF.
 - Fluxo OAuth do LinkedIn: início, callback com `state` de uso único, consulta sanitizada da conexão e desconexão local.
+- Smoke test real concluído com o aplicativo configurado no LinkedIn Developer Portal: autorização retornou `connected: true` e `status: ACTIVE`.
 - Tokens de acesso cifrados em repouso; rate limiting para autenticação e rotas OAuth.
 - Testes automatizados locais para os fluxos implementados. O provedor LinkedIn é simulado nos testes.
 - Persistência separada por ambiente: SQLite no perfil `local` e Oracle no perfil `prod`, com migrations Flyway específicas para cada banco.
@@ -24,13 +25,12 @@ Este documento consolida o estado vigente. Os relatórios em `docs/progress/` pr
 
 ## Pendências abertas
 
-1. Confirmar a configuração real do app, produtos, scopes e redirect URI no Developer Portal e executar um smoke test OAuth manual.
-2. Validar o projeto com JDK 21.
-3. Antes de exposição pública, validar rate limiting distribuído com Redis e o tratamento confiável do IP de origem no proxy.
-4. Executar a validação Oracle prevista para o perfil de produção em um banco de teste descartável.
-5. Implementar as etapas seguintes do roteiro: adaptador de publicação (Passo 9), rascunhos/aprovação/idempotência (Passo 10), oportunidades locais (Passo 11) e, depois, API/OpenAPI, testes e hardening (Passos 12–14).
+1. Validar o projeto com JDK 21 no ambiente-alvo, caso a execução de produção use uma instalação diferente.
+2. Antes de exposição pública, validar rate limiting distribuído com Redis e o tratamento confiável do IP de origem no proxy.
+3. Executar a validação Oracle prevista para o perfil de produção em um banco de teste descartável.
+4. Implementar as etapas seguintes do roteiro: adaptador de publicação (Passo 9), rascunhos/aprovação/idempotência (Passo 10), oportunidades locais (Passo 11) e, depois, API/OpenAPI, testes e hardening (Passos 12–14).
 
-Os itens 1–4 são validações pendentes; o item 5 é trabalho planejado, não funcionalidade disponível. Acompanhe alterações de estado atualizando este documento e o resumo do README.
+Os itens 1–3 são validações pendentes; o item 4 é trabalho planejado, não funcionalidade disponível. Acompanhe alterações de estado atualizando este documento e o resumo do README.
 
 ## Precedência documental
 

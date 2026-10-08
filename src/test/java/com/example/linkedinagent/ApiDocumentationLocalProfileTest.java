@@ -46,4 +46,11 @@ class ApiDocumentationLocalProfileTest {
                 .andExpect(jsonPath("$.paths['/api/v1/linkedin/connection'].get.description",
                         containsString("connected: true")));
     }
+
+    @Test
+    void healthEndpointReportsTheRunningApplication() throws Exception {
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
+    }
 }

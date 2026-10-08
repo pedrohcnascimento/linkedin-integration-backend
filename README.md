@@ -6,7 +6,7 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-🚧 **Etapa atual: Passo 8 — ciclo OAuth com o LinkedIn**, implementado e validado por testes automatizados. O código oferece identidade local, sessões e conexão/desconexão LinkedIn; ainda não implementa funcionalidades de publicação, rascunhos, histórico ou oportunidades. A validação com o app real no Developer Portal, smoke test e validação no JDK 21 seguem pendentes. Ver [`docs/progress/STEP-08.md`](docs/progress/STEP-08.md).
+✅ **Passo 8 — ciclo OAuth com o LinkedIn** concluído. O código oferece identidade local, sessões e conexão/desconexão LinkedIn; o smoke test com o app real no Developer Portal confirmou uma conexão `ACTIVE`. Ainda não são implementadas funcionalidades de publicação, rascunhos, histórico ou oportunidades. Ver [`docs/progress/STEP-08.md`](docs/progress/STEP-08.md).
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) e o roteiro, incluindo os próximos passos, em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
@@ -38,7 +38,7 @@ Para o **estado funcional e as pendências atuais**, prevalece [`docs/status-atu
 - Conexão LinkedIn via OAuth 2.0, consulta sanitizada do estado da conexão e desconexão local. Tokens são cifrados em repouso e não são devolvidos pela API.
 - Rate limiting para autenticação e endpoints OAuth.
 
-Essas funcionalidades são expostas pelos endpoints listados abaixo e cobertas por testes automatizados. O fluxo OAuth ainda não foi validado contra um app real no Developer Portal.
+Essas funcionalidades são expostas pelos endpoints listados abaixo e cobertas por testes automatizados. O fluxo OAuth foi validado contra o app real no Developer Portal; o provedor continua sendo simulado na suíte automatizada.
 
 ### Planejado, ainda não implementado
 

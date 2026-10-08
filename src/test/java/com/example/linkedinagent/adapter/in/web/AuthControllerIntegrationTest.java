@@ -1,6 +1,7 @@
 package com.example.linkedinagent.adapter.in.web;
 
 import com.example.linkedinagent.application.ports.out.LinkedInOAuthClient;
+import com.example.linkedinagent.application.linkedin.LinkedInProviderException;
 import com.example.linkedinagent.application.ratelimit.RateLimitStore;
 import com.jayway.jsonpath.JsonPath;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -280,6 +281,18 @@ class AuthControllerIntegrationTest {
     }
 
     @Test
+    void oauthCallbackRejectsMissingStateOrAuthorizationCode() throws Exception {
+        mockMvc.perform(get("/api/v1/linkedin/oauth/callback"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("LINKEDIN_AUTHORIZATION_FAILED"));
+
+        mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .param("state", "state-without-code"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("LINKEDIN_AUTHORIZATION_FAILED"));
+    }
+
+    @Test
     void oauthCallbackPersistsEncryptedAuthorizationForInitiatingUserAndRejectsReplay() throws Exception {
         String email = UUID.randomUUID() + "@example.com";
         register(email);
@@ -352,6 +365,44 @@ class AuthControllerIntegrationTest {
                         .param("state", state)
                         .param("code", "authorization-code"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void providerFailureIsSanitizedAndConsumedStateCannotBeReplayed() throws Exception {
+        String email = UUID.randomUUID() + "@example.com";
+        register(email);
+        MockHttpSession session = login(email);
+        when(linkedInOAuthClient.authorizationUri(anyString(), anyString()))
+                .thenAnswer(invocation -> URI.create(
+                        "https://www.linkedin.com/oauth/v2/authorization?state=" + invocation.getArgument(0)));
+
+        MvcResult start = mockMvc.perform(get("/api/v1/linkedin/oauth/start").session(session))
+                .andExpect(status().isFound())
+                .andReturn();
+        String state = UriComponentsBuilder.fromUriString(start.getResponse().getHeader("Location"))
+                .build()
+                .getQueryParams()
+                .getFirst("state");
+        when(linkedInOAuthClient.exchangeAuthorizationCode("authorization-code"))
+                .thenThrow(new LinkedInProviderException("provider private details"));
+
+        mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .param("state", state)
+                        .param("code", "authorization-code"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value("LINKEDIN_PROVIDER_ERROR"))
+                .andExpect(jsonPath("$.message").value("LinkedIn provider request failed."))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("provider private details"))));
+
+        mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .param("state", state)
+                        .param("code", "authorization-code"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("LINKEDIN_AUTHORIZATION_FAILED"));
+        mockMvc.perform(get("/api/v1/linkedin/connection").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.connected").value(false));
     }
 
     @Test
