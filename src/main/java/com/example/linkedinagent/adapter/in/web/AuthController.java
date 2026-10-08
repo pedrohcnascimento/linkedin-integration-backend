@@ -6,6 +6,8 @@ import com.example.linkedinagent.exception.PasswordTooLongException;
 import com.example.linkedinagent.application.auth.RegisteredUser;
 import com.example.linkedinagent.application.auth.RegistrationService;
 import com.example.linkedinagent.application.ratelimit.RateLimitService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -44,6 +46,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1")
 @Validated
+@Tag(name = "Authentication", description = "Conta local, sessão e token CSRF usado pela UI do Swagger.")
 public class AuthController {
 
     private final RegistrationService registrationService;
@@ -69,11 +72,13 @@ public class AuthController {
     }
 
     @GetMapping("/auth/csrf")
+    @Operation(summary = "Obter token CSRF", description = "Execute antes de requisições POST, PATCH ou DELETE. No perfil local o token também é gravado no cookie XSRF-TOKEN e o Swagger o envia no header X-XSRF-TOKEN.")
     public CsrfResponse csrf(CsrfToken csrfToken) {
         return new CsrfResponse(csrfToken.getHeaderName(), csrfToken.getToken());
     }
 
     @PostMapping("/auth/register")
+    @Operation(summary = "Criar conta local", description = "Cria a conta usada para autenticar os endpoints protegidos e manter a sessão do Swagger.")
     public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
         rateLimitService.check("auth-register", List.of(new RateLimitService.Limit(
                 "account", request.email().trim().toLowerCase(Locale.ROOT), 3, Duration.ofDays(1))));
@@ -84,6 +89,7 @@ public class AuthController {
     }
 
     @PostMapping("/auth/login")
+    @Operation(summary = "Entrar na sessão local", description = "Após o login, o cookie JSESSIONID mantém a sessão e um novo cookie CSRF é emitido automaticamente para o Swagger.")
     public ResponseEntity<?> login(
             @Valid @RequestBody LoginRequest request,
             HttpServletRequest httpRequest,
@@ -104,7 +110,10 @@ public class AuthController {
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, httpRequest, httpResponse);
-        csrfTokenRepository.saveToken(null, httpRequest, httpResponse);
+        // Rotate the CSRF token after authentication and expose the fresh cookie.
+        // The local Swagger UI reads this cookie when executing state-changing requests.
+        CsrfToken freshCsrfToken = csrfTokenRepository.generateToken(httpRequest);
+        csrfTokenRepository.saveToken(freshCsrfToken, httpRequest, httpResponse);
 
         AppUserPrincipal user = (AppUserPrincipal) authentication.getPrincipal();
         return ResponseEntity.ok(new UserResponse(

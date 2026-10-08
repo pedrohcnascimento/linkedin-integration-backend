@@ -6,6 +6,9 @@ import com.example.linkedinagent.adapter.out.security.AppUserPrincipal;
 import com.example.linkedinagent.application.publishing.DraftWorkflowException;
 import com.example.linkedinagent.application.publishing.DraftWorkflowService;
 import com.example.linkedinagent.application.publishing.LinkedInPublishingException;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -31,6 +34,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1")
+@Tag(name = "Drafts", description = "Criação, listagem paginada, edição, aprovação e publicação de drafts textuais.")
 public class DraftController {
 
     private final DraftWorkflowService workflowService;
@@ -49,6 +53,7 @@ public class DraftController {
     }
 
     @GetMapping("/drafts")
+    @Operation(summary = "Listar drafts do usuário", description = "Requer login local. Retorna somente drafts pertencentes à sessão autenticada, ordenados por atualização mais recente. A página começa em 0 e o tamanho máximo é 50.")
     public DraftPageResponse list(
             @AuthenticationPrincipal AppUserPrincipal user,
             @RequestParam(defaultValue = "0") int page,
@@ -64,6 +69,7 @@ public class DraftController {
     }
 
     @PatchMapping("/drafts/{id}")
+    @Operation(summary = "Editar um draft", description = "Atualiza parcialmente texto ou título. Só funciona enquanto o draft estiver em DRAFT; depois da aprovação ele não pode mais ser editado.")
     public DraftResponse update(
             @AuthenticationPrincipal AppUserPrincipal user,
             @PathVariable UUID id,
@@ -73,6 +79,7 @@ public class DraftController {
     }
 
     @PostMapping("/drafts/{id}/approve")
+    @Operation(summary = "Aprovar um draft", description = "Muda o draft de DRAFT para APPROVED. Depois disso o conteúdo fica imutável e pode ser publicado.")
     public DraftResponse approve(
             @AuthenticationPrincipal AppUserPrincipal user,
             @PathVariable UUID id) {
@@ -80,9 +87,11 @@ public class DraftController {
     }
 
     @PostMapping("/drafts/{id}/publish")
+    @Operation(summary = "Publicar um draft aprovado", description = "Publica no LinkedIn um draft APPROVED. Execute primeiro o fluxo OAuth do LinkedIn. Requer o header Idempotency-Key para evitar publicação duplicada.")
     public ResponseEntity<PublicationResponse> publish(
             @AuthenticationPrincipal AppUserPrincipal user,
             @PathVariable UUID id,
+            @Parameter(description = "Chave estável para repetir a mesma operação sem criar outro post.", required = true)
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
         PublicationEntity publication = workflowService.publish(user.getId(), id, idempotencyKey);
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(publication));

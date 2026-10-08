@@ -33,6 +33,15 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
                 A URL de callback local deve estar cadastrada exatamente como `http://localhost:8080/api/v1/linkedin/oauth/callback` no LinkedIn Developer Portal. O aplicativo deve ter os produtos **Sign In with LinkedIn using OpenID Connect** e **Share on LinkedIn** habilitados para os scopes `openid profile w_member_social`.
 
                 O Swagger local preserva a sessão e envia o CSRF automaticamente. O erro `401` indica que é necessário fazer login local; `Failed to fetch` ao executar `oauth/start` é esperado porque o endpoint redireciona para outro domínio.
+
+                ## Como testar drafts pelo Swagger local
+
+                1. Execute `GET /api/v1/auth/csrf` antes do primeiro `POST` ou `PATCH`. O token fica no cookie `XSRF-TOKEN`.
+                2. Execute `POST /api/v1/auth/register` e depois `POST /api/v1/auth/login` usando a mesma sessão do navegador. O login renova o cookie CSRF automaticamente.
+                3. Execute `GET /api/v1/drafts` para listar somente os drafts do usuário autenticado. Use `page` começando em `0` e `size` entre `1` e `50`.
+                4. Execute `POST /api/v1/drafts` para criar um draft textual. O Swagger local envia `X-XSRF-TOKEN` automaticamente a partir do cookie.
+                5. Execute `PATCH /api/v1/drafts/{id}` para editar um draft que ainda esteja em `DRAFT`. Após a aprovação, a edição é bloqueada.
+                6. Se uma operação que altera dados retornar `403`, execute novamente `GET /api/v1/auth/csrf` e tente a operação outra vez. Não copie o token para o corpo JSON; ele deve ser enviado no header CSRF.
                 """))
 public class LinkedinAgentApplication {
 
