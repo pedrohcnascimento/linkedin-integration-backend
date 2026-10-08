@@ -18,5 +18,14 @@ public interface LinkedInAuthorizationPort {
 
     Optional<LinkedInConnection> findByAppUserId(UUID appUserId);
 
+    Optional<LinkedInAuthorizationCredentials> findCredentials(UUID appUserId);
+
     void deleteByAppUserId(UUID appUserId);
+
+    record LinkedInAuthorizationCredentials(
+            String memberSubject,
+            String encryptedAccessToken,
+            String status,
+            Instant expiresAt) {
+    }
 }

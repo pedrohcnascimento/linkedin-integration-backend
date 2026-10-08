@@ -66,6 +66,17 @@ public class LinkedInAuthorizationPersistenceAdapter implements LinkedInAuthoriz
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public Optional<LinkedInAuthorizationPort.LinkedInAuthorizationCredentials> findCredentials(UUID appUserId) {
+        return authorizationRepository.findByAppUser_Id(appUserId)
+                .map(authorization -> new LinkedInAuthorizationPort.LinkedInAuthorizationCredentials(
+                        authorization.getMemberSubject(),
+                        authorization.getEncryptedAccessToken(),
+                        authorization.getStatus(),
+                        authorization.getExpiresAt()));
+    }
+
+    @Override
     @Transactional
     public void deleteByAppUserId(UUID appUserId) {
         authorizationRepository.findByAppUser_Id(appUserId).ifPresent(authorizationRepository::delete);

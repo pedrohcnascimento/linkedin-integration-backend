@@ -6,7 +6,7 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-🚧 **Passo 9 — adaptador de publicação** em andamento. O ciclo OAuth do Passo 8 está concluído e validado com o app real no Developer Portal (`ACTIVE`). A primeira entrega do Passo 9 já encapsula posts textuais na Posts API, mas a rota pública e o fluxo de aprovação/idempotência ainda não estão disponíveis. Ver [`docs/progress/STEP-09.md`](docs/progress/STEP-09.md).
+🚧 **Passo 10 — rascunho aprovado e idempotência** em andamento. O ciclo OAuth do Passo 8 está concluído e validado com o app real no Developer Portal (`ACTIVE`). A API já permite criar, aprovar e publicar rascunhos textuais com `Idempotency-Key`; edição, listagem, histórico e mídia ainda não estão disponíveis. Ver [`docs/progress/STEP-10.md`](docs/progress/STEP-10.md).
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) e o roteiro, incluindo os próximos passos, em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
@@ -42,7 +42,7 @@ Essas funcionalidades são expostas pelos endpoints listados abaixo e cobertas p
 
 ### Planejado, ainda não implementado
 
-- Fluxo público de publicação usando a Posts API, dependente de rascunho aprovado e idempotência.
+- Criação, aprovação e publicação textual de rascunho usando a Posts API, com idempotência por `Idempotency-Key`.
 - Casos de uso e endpoints para criar/revisar rascunhos, aprovar e publicar conteúdo, com histórico e idempotência.
 - Registro e organização local de oportunidades de vaga.
 

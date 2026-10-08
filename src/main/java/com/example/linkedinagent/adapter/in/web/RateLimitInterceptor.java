@@ -42,8 +42,12 @@ public class RateLimitInterceptor implements HandlerInterceptor {
                             policy.maximumRequests(), policy.window())));
             return true;
         }
-        if ((path.equals("/api/v1/publications") || path.startsWith("/api/v1/publications/"))
-                && List.of("POST", "PUT", "PATCH", "DELETE").contains(request.getMethod())) {
+        boolean publicationWrite = (path.equals("/api/v1/publications")
+                || path.startsWith("/api/v1/publications/")
+                || path.matches("/api/v1/drafts/[^/]+/publish"))
+                && List.of("POST", "PUT", "PATCH", "DELETE").contains(request.getMethod());
+        if (publicationWrite
+        ) {
             List<RateLimitService.Limit> limits = new ArrayList<>();
             limits.add(new RateLimitService.Limit("ip", clientAddress(request), 30, FIFTEEN_MINUTES));
             if (request.getUserPrincipal() instanceof Authentication authentication

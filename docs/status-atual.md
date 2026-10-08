@@ -1,8 +1,8 @@
 # Status atual do projeto
 
 **Atualizado em:** 08/10/2026
-**Etapa atual:** Passo 9 em andamento — adaptador de publicação
-**Referência de implementação:** [`docs/progress/STEP-09.md`](progress/STEP-09.md)
+**Etapa atual:** Passo 10 em andamento — rascunho aprovado e idempotência
+**Referência de implementação:** [`docs/progress/STEP-10.md`](progress/STEP-10.md)
 
 Este documento consolida o estado vigente. Os relatórios em `docs/progress/` preservam o registro original de cada etapa e podem conter decisões ou pendências que já foram superadas.
 
@@ -15,13 +15,14 @@ Este documento consolida o estado vigente. Os relatórios em `docs/progress/` pr
 - Testes automatizados locais para os fluxos implementados. O provedor LinkedIn é simulado nos testes.
 - Persistência separada por ambiente: SQLite no perfil `local` e Oracle no perfil `prod`, com migrations Flyway específicas para cada banco.
 - Fundação do adaptador da Posts API: publicação textual de membro, versão configurável, headers oficiais e captura de `x-restli-id`.
+- Fluxo mínimo de drafts: criação textual, aprovação, publicação autenticada e replay idempotente por `Idempotency-Key`.
 
 ## Decisões vigentes
 
 - **Licença:** MIT; o arquivo `LICENSE` contém o nome do titular.
 - **Publicação futura:** usar LinkedIn Posts API (`POST /rest/posts`), não a UGC Post API legada. A versão mensal `Linkedin-Version` deverá ser configurável. Ver a decisão detalhada na [matriz de capacidades](linkedin-capability-matrix.md).
 - **Refresh e revogação:** não presumir refresh token nem revogação remota; nenhum dos dois está implementado.
-- **Escopo funcional atual:** ainda não há casos de uso nem endpoints funcionais de rascunhos, publicação/histórico ou oportunidades. Migrations e entidades preliminares não tornam esses recursos executáveis.
+- **Escopo funcional atual:** drafts textuais podem ser criados, aprovados e publicados uma vez com idempotência; edição, listagem paginada, histórico completo, mídia e oportunidades ainda não estão disponíveis.
 - **Empacotamento:** JAR executável Spring Boot; Docker não está implementado.
 
 ## Pendências abertas
@@ -29,10 +30,10 @@ Este documento consolida o estado vigente. Os relatórios em `docs/progress/` pr
 1. Validar o projeto com JDK 21 no ambiente-alvo, caso a execução de produção use uma instalação diferente.
 2. Antes de exposição pública, validar rate limiting distribuído com Redis e o tratamento confiável do IP de origem no proxy.
 3. Executar a validação Oracle prevista para o perfil de produção em um banco de teste descartável.
-4. Concluir o Passo 9 com o caso de uso de publicação e integração ao fluxo aprovado.
-5. Implementar rascunhos/aprovação/idempotência (Passo 10), oportunidades locais (Passo 11) e, depois, API/OpenAPI, testes e hardening (Passos 12–14).
+4. Concluir o Passo 9/10 com edição/listagem, histórico, retry seguro e concorrência de idempotência validados em SQLite e Oracle.
+5. Implementar oportunidades locais (Passo 11) e, depois, API/OpenAPI, testes e hardening (Passos 12–14).
 
-Os itens 1–3 são validações pendentes; os itens 4–5 são trabalho planejado, e a fundação do Passo 9 ainda não é uma funcionalidade pública disponível. Acompanhe alterações de estado atualizando este documento e o resumo do README.
+Os itens 1–3 são validações pendentes; os itens 4–5 são trabalho planejado. O fluxo textual de drafts/publicação já é funcional, mas ainda não representa a superfície completa prevista no roteiro.
 
 ## Precedência documental
 
