@@ -12,6 +12,7 @@ import com.example.linkedinagent.domain.publishing.LinkedInPublicationCommand;
 import com.example.linkedinagent.domain.publishing.PublicationResult;
 import com.example.linkedinagent.exception.DraftWorkflowException;
 import com.example.linkedinagent.exception.LinkedInPublishingException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -96,6 +97,11 @@ public class DraftWorkflowService {
         return draftRepository.findAllByAppUser_Id(appUserId, pageable);
     }
 
+    @Transactional(readOnly = true)
+    public Page<PublicationEntity> listPublications(UUID appUserId, Pageable pageable) {
+        return publicationRepository.findAllByAppUser_Id(appUserId, pageable);
+    }
+
     @Transactional
     public ContentDraftEntity update(UUID appUserId, UUID draftId, String text, String mediaCategory,
                                      String originalUrl, String title) {
@@ -164,7 +170,12 @@ public class DraftWorkflowService {
         publication.setRequestFingerprint(fingerprint);
         publication.setStatus("PUBLISHING");
         publication.setCreatedAt(now);
-        publicationRepository.saveAndFlush(publication);
+        try {
+            publicationRepository.saveAndFlush(publication);
+        } catch (DataIntegrityViolationException exception) {
+            throw error("PUBLICATION_ALREADY_PROCESSED",
+                    "This idempotent publication request was already processed.", HttpStatus.CONFLICT);
+        }
 
         try {
             PublicationResult result = publishingPort.publish(accessToken,

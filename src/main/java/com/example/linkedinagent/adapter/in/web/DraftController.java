@@ -135,6 +135,31 @@ public class DraftController {
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(publication));
     }
 
+    @GetMapping("/publications")
+    @Operation(tags = "Publications", summary = "Listar histórico de publicações",
+            description = "Retorna somente publicações do usuário autenticado, ordenadas por criação mais recente e UUID descendente. Página começa em 0; tamanho máximo de 50.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Página do histórico do usuário."),
+            @ApiResponse(responseCode = "400", description = "Parâmetros page/size fora dos limites permitidos."),
+            @ApiResponse(responseCode = "401", description = "Sessão local ausente.")
+    })
+    public PublicationPageResponse listPublications(
+            @AuthenticationPrincipal AppUserPrincipal user,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        if (page < 0 || size < 1 || size > 50) {
+            throw new DraftWorkflowException("INVALID_PAGINATION",
+                    "Page must be non-negative and size must be between 1 and 50.", HttpStatus.BAD_REQUEST);
+        }
+        Page<PublicationEntity> publications = workflowService.listPublications(user.getId(),
+                PageRequest.of(page, size, Sort.by(
+                        Sort.Order.desc("createdAt"),
+                        Sort.Order.desc("id"))));
+        return new PublicationPageResponse(publications.getContent().stream().map(this::toResponse).toList(),
+                publications.getNumber(), publications.getSize(),
+                publications.getTotalElements(), publications.getTotalPages());
+    }
+
     @ExceptionHandler(DraftWorkflowException.class)
     ResponseEntity<ApiError> handleWorkflow(DraftWorkflowException exception) {
         return ResponseEntity.status(exception.getStatus())
@@ -161,7 +186,8 @@ public class DraftController {
     }
 
     private PublicationResponse toResponse(PublicationEntity publication) {
-        return new PublicationResponse(publication.getId(), publication.getDraft().getId(),
+        return new PublicationResponse(publication.getId(),
+                publication.getDraft() == null ? null : publication.getDraft().getId(),
                 publication.getExternalPostId(), publication.getStatus(), publication.getFailureCode(),
                 publication.getPublishedAt(), publication.getCreatedAt());
     }
@@ -202,6 +228,10 @@ public class DraftController {
 
     public record DraftPageResponse(java.util.List<DraftResponse> content, int page, int size,
                                     long totalElements, int totalPages) {
+    }
+
+    public record PublicationPageResponse(java.util.List<PublicationResponse> content, int page, int size,
+                                          long totalElements, int totalPages) {
     }
 
     public record PublicationResponse(UUID id, UUID draftId, String externalPostId, String status,

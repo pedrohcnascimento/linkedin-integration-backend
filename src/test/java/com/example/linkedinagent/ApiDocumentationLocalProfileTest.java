@@ -52,6 +52,8 @@ class ApiDocumentationLocalProfileTest {
                 .andExpect(jsonPath("$.info.description", containsString("Como testar drafts pelo Swagger local")))
                 .andExpect(jsonPath("$.paths['/api/v1/drafts'].get.description",
                         containsString("somente drafts pertencentes")))
+                .andExpect(jsonPath("$.paths['/api/v1/publications'].get.description",
+                        containsString("somente publicações do usuário autenticado")))
                 .andExpect(jsonPath("$.paths['/api/v1/drafts/{id}'].patch.description",
                         containsString("Só funciona enquanto o draft estiver em DRAFT")))
                 .andExpect(jsonPath("$.components.schemas.CreateDraftRequest.properties.mediaCategory.example",

@@ -5,6 +5,7 @@ import com.example.linkedinagent.application.ports.out.LinkedInPublishingPort;
 import com.example.linkedinagent.application.ports.out.TokenCipherPort;
 import com.example.linkedinagent.application.ratelimit.RateLimitStore;
 import com.example.linkedinagent.domain.publishing.PublicationResult;
+import com.example.linkedinagent.exception.LinkedInPublishingException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -194,6 +195,80 @@ class DraftControllerIntegrationTest {
                         .get("/api/v1/drafts").session(session).param("size", "51"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_PAGINATION"));
+    }
+
+    @Test
+    void publicationHistoryIsPagedAndScopedToAuthenticatedOwner() throws Exception {
+        MockHttpSession firstSession = loginAndRegister();
+        publishDraft(firstSession, createDraft(firstSession), "history-key-1");
+        publishDraft(firstSession, createDraft(firstSession), "history-key-2");
+        MockHttpSession secondSession = loginAndRegister();
+
+        mockMvc.perform(get("/api/v1/publications").session(firstSession)
+                        .param("page", "0").param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].status").value("PUBLISHED"))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(1))
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.totalPages").value(2));
+
+        mockMvc.perform(get("/api/v1/publications").session(secondSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(0))
+                .andExpect(jsonPath("$.totalElements").value(0));
+
+        mockMvc.perform(get("/api/v1/publications"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void failedPublicationIsPersistedAndSameIdempotencyKeyIsNotRetried() throws Exception {
+        MockHttpSession session = loginAndRegister();
+        UUID draftId = createDraft(session);
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", draftId)
+                        .session(session).with(csrf()))
+                .andExpect(status().isOk());
+        when(publishingPort.publish(any(), any()))
+                .thenThrow(new LinkedInPublishingException("LINKEDIN_UNAVAILABLE", "provider details"));
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "failed-key"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value("LINKEDIN_UNAVAILABLE"))
+                .andExpect(jsonPath("$.message").value("LinkedIn publication failed."));
+
+        mockMvc.perform(get("/api/v1/publications").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].status").value("FAILED"))
+                .andExpect(jsonPath("$.content[0].failureCode").value("LINKEDIN_UNAVAILABLE"));
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "failed-key"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PUBLICATION_ALREADY_PROCESSED"));
+        verify(publishingPort, times(1)).publish(any(), any());
+    }
+
+    @Test
+    void publicationHistoryRejectsUnsafePageSize() throws Exception {
+        MockHttpSession session = loginAndRegister();
+
+        mockMvc.perform(get("/api/v1/publications").session(session).param("size", "51"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PAGINATION"));
+    }
+
+    private void publishDraft(MockHttpSession session, UUID draftId, String idempotencyKey) throws Exception {
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", draftId)
+                        .session(session).with(csrf()))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", idempotencyKey))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("PUBLISHED"));
     }
 
     private UUID createDraft(MockHttpSession session) throws Exception {

@@ -6,7 +6,7 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-🚧 **Passo 10 — rascunhos e publicação textual** em andamento. OAuth foi validado com o app no Developer Portal (`ACTIVE`), e a API implementa criação, listagem paginada, edição antes da aprovação, aprovação e publicação via Posts API com `Idempotency-Key`. Ainda faltam histórico de publicações e validação robusta de falhas/requisições concorrentes. O perfil `prod` está configurado para Oracle, mas ainda não há evidência de validação contra um Oracle de teste. Veja [`docs/status-atual.md`](docs/status-atual.md) para o estado e o plano da próxima release.
+🚧 **Passo 10 — rascunhos e publicação textual** em andamento. OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação e publicação idempotente via Posts API, além de histórico paginado por usuário. Falhas conhecidas são registradas e não são repetidas automaticamente; concorrência em banco real ainda precisa de validação. O perfil `prod` está configurado para Oracle, sem validação documentada contra Oracle de teste. Veja [`docs/status-atual.md`](docs/status-atual.md).
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) e o roteiro, incluindo os próximos passos, em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
@@ -77,14 +77,14 @@ Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem 
 | `PATCH /api/v1/drafts/{id}` | Sessão + CSRF | Edita texto/título enquanto o rascunho está em `DRAFT` |
 | `POST /api/v1/drafts/{id}/approve` | Sessão + CSRF | Aprova o rascunho |
 | `POST /api/v1/drafts/{id}/publish` | Sessão + CSRF | Publica rascunho aprovado; exige `Idempotency-Key` |
+| `GET /api/v1/publications?page=0&size=20` | Sessão | Histórico de publicações do usuário; tamanho máximo 50 |
 
 `GET /actuator/health` também está disponível para health check. A documentação interativa da API (`/swagger-ui.html`) e o OpenAPI (`/api-docs`) são habilitados apenas nos perfis `local` e `test`; no perfil `prod`, ambos ficam desativados.
 
 ## Próximos passos
 
-1. Concluir a confiabilidade do Passo 10: testar falhas do provedor, publicação concorrente e repetição da mesma chave; definir explicitamente o comportamento seguro após resultado externo ambíguo.
-2. Adicionar endpoint de histórico paginado e testar isolamento do histórico por usuário.
-3. Executar validação do perfil `prod` em Oracle de teste descartável e confirmar JDK 21, Redis e configuração do IP atrás do proxy antes de exposição pública. A presença de dependências PostgreSQL no Maven não significa que PostgreSQL seja o banco configurado no perfil `prod`.
+1. Concluir a confiabilidade do Passo 10: validar concorrência em banco real e definir explicitamente a recuperação segura após resultado externo ambíguo.
+2. Executar validação do perfil `prod` em Oracle de teste descartável e confirmar JDK 21, Redis e configuração do IP atrás do proxy antes de exposição pública. A presença de dependências PostgreSQL no Maven não significa que PostgreSQL seja o banco configurado no perfil `prod`.
 4. Depois de fechar esse escopo, priorizar oportunidades locais e completar documentação OpenAPI, testes e hardening conforme [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md).
 
 ## Arquitetura
@@ -189,7 +189,7 @@ O callback está configurado como `http://localhost:8080/api/v1/linkedin/oauth/c
 
 ## Limitações atuais
 
-- O histórico de publicações e oportunidades ainda não têm endpoints funcionais.
+- Oportunidades ainda não têm endpoints funcionais.
 - Não há refresh token presumido — depende do que o LinkedIn efetivamente conceder para o app registrado.
 - Falhas conhecidas são registradas como `FAILED`; repetição da mesma chave após falha não republica automaticamente e retorna conflito. A recuperação e os resultados externos ambíguos ainda precisam de uma política validada.
 - O perfil `prod` está configurado para Oracle, mas sua migration/schema não têm teste de integração Oracle no repositório.

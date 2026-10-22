@@ -231,7 +231,7 @@ Versionada desde o início com prefixo `/api/v1`.
 
 ### 7.1 Endpoints iniciais
 
-Esta tabela mistura rotas implementadas com destinos planejados; ela não é um inventário do contrato atual. Atualmente há criação/listagem/edição de draft, aprovação e publicação textual. A consulta individual, histórico e oportunidades abaixo permanecem planejados e não devem ser usados como se estivessem disponíveis.
+Esta tabela mistura rotas implementadas com destinos planejados; ela não é um inventário completo do contrato atual. Atualmente há criação/listagem/edição de draft, aprovação e publicação textual, além de histórico paginado. A consulta individual e oportunidades abaixo permanecem planejadas e não devem ser usados como se estivessem disponíveis.
 
 | Método e rota | Finalidade | Autenticação | Resposta principal / estado |
 |---|---|---|---|
@@ -245,7 +245,7 @@ Esta tabela mistura rotas implementadas com destinos planejados; ela não é um 
 | `PATCH /api/v1/drafts/{id}` | Editar rascunho | Usuário local | `200` |
 | `POST /api/v1/drafts/{id}/approve` | Aprovar publicação | Usuário local | `200` |
 | `POST /api/v1/drafts/{id}/publish` | Publicar rascunho aprovado | Usuário local | Implementado; `201` inclusive no replay concluído |
-| `GET /api/v1/publications` | Histórico de publicações | Usuário local | Planejado; não implementado |
+| `GET /api/v1/publications` | Histórico de publicações | Usuário local | Implementado; página de 0 a 50, somente do proprietário |
 | `POST /api/v1/opportunities` | Registrar oportunidade local | Usuário local | Planejado; não implementado |
 | `GET /api/v1/opportunities` | Filtrar oportunidades próprias | Usuário local | Planejado; não implementado |
 | `PATCH /api/v1/opportunities/{id}` | Atualizar status local | Usuário local | Planejado; não implementado |
@@ -442,13 +442,12 @@ O agente **não deve avançar automaticamente** quando um teste falhar, uma migr
 ### Passo 10 — Implementar rascunhos, aprovação e idempotência
 **Objetivo:** impedir publicação acidental ou duplicada.
 **Implementado:** `POST /api/v1/drafts`, `GET /api/v1/drafts`, `PATCH /api/v1/drafts/{id}`, aprovação e publicação textual. A propriedade é verificada pela sessão local; só `DRAFT` pode ser editado/aprovado e só `APPROVED` pode ser publicado. A publicação exige conexão ativa e `Idempotency-Key`; replay bem-sucedido devolve o resultado salvo, mantendo o status HTTP atual `201`.
+**Entregue nesta continuação:** `GET /api/v1/publications` fornece histórico paginado por usuário, ordenado por `createdAt` e UUID descendentes. Falhas conhecidas ficam em `FAILED` e o replay da mesma chave retorna conflito, sem nova chamada externa. Colisões de unicidade durante a gravação inicial também retornam `409` antes de chamar o LinkedIn.
 **Plano de conclusão:**
-1. Testar falha conhecida do provedor, persistência de `FAILED` e sanitização da resposta.
-2. Documentar e decidir o comportamento de nova tentativa após falha conhecida e após timeout/resultado ambíguo; não adicionar retry cego que possa duplicar post.
-3. Confirmar o banco suportado e preparar teste descartável; depois, testar chamadas simultâneas com mesma chave, mesma draft e chaves diferentes nesse banco.
-4. Implementar histórico paginado de publicações, com isolamento por proprietário e ordenação estável; o endpoint não existe ainda.
-5. Completar contrato OpenAPI e testes de integração para limites de paginação, propriedade, erros e replay.
-**Critério de conclusão:** contrato de falhas registrado, histórico disponível, concorrência e replay demonstrados por testes no banco de destino e na suíte local. A etapa permanece em andamento até cumprir esses critérios.
+1. Documentar e decidir a recuperação após timeout/resultado externo ambíguo; não adicionar retry cego que possa duplicar post.
+2. Confirmar o banco suportado e preparar teste descartável; validar chamadas simultâneas com mesma chave, mesma draft e chaves diferentes nesse banco. O teste de colisão existente usa repositório simulado, não substitui concorrência real.
+3. Completar a revisão OpenAPI e de schema/respostas, incluindo histórico, limites de paginação, propriedade, falhas e replay.
+**Critério de conclusão:** política para resultado ambíguo registrada, concorrência e replay demonstrados por testes no banco de destino e contrato revisado. A etapa permanece em andamento até cumprir esses critérios.
 
 ### Passo 11 — Adicionar oportunidades locais sem scraping
 **Objetivo:** apoiar busca de vagas sem automatizar o LinkedIn.
