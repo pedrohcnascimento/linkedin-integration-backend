@@ -1,4 +1,4 @@
-package com.example.linkedinagent.application.publishing;
+package com.example.linkedinagent.exception;
 
 import org.springframework.http.HttpStatus;
 

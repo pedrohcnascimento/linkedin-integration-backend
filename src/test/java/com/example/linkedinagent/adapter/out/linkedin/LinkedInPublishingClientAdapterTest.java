@@ -1,6 +1,6 @@
 package com.example.linkedinagent.adapter.out.linkedin;
 
-import com.example.linkedinagent.application.publishing.LinkedInPublishingException;
+import com.example.linkedinagent.exception.LinkedInPublishingException;
 import com.example.linkedinagent.config.AppProperties;
 import com.example.linkedinagent.domain.publishing.LinkedInPublicationCommand;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,7 +16,6 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
-import static org.springframework.test.web.client.response.MockRestResponseCreators.withNoContent;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.http.HttpStatus.CREATED;
 import static org.springframework.http.HttpStatus.TOO_MANY_REQUESTS;

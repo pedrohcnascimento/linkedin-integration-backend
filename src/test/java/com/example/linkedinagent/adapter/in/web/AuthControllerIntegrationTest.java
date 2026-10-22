@@ -1,7 +1,7 @@
 package com.example.linkedinagent.adapter.in.web;
 
 import com.example.linkedinagent.application.ports.out.LinkedInOAuthClient;
-import com.example.linkedinagent.application.linkedin.LinkedInProviderException;
+import com.example.linkedinagent.exception.LinkedInProviderException;
 import com.example.linkedinagent.application.ratelimit.RateLimitStore;
 import com.jayway.jsonpath.JsonPath;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -19,7 +19,6 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Locale;
 import java.net.URI;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 

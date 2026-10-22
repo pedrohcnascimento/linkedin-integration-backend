@@ -2,7 +2,7 @@ package com.example.linkedinagent.adapter.out.ratelimit;
 
 import com.example.linkedinagent.application.ratelimit.RateLimitBucket;
 import com.example.linkedinagent.application.ratelimit.RateLimitStore;
-import com.example.linkedinagent.application.ratelimit.RateLimitStoreUnavailableException;
+import com.example.linkedinagent.exception.RateLimitStoreUnavailableException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 

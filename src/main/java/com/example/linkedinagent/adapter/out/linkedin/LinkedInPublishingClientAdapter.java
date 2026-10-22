@@ -1,6 +1,6 @@
 package com.example.linkedinagent.adapter.out.linkedin;
 
-import com.example.linkedinagent.application.publishing.LinkedInPublishingException;
+import com.example.linkedinagent.exception.LinkedInPublishingException;
 import com.example.linkedinagent.application.ports.out.LinkedInPublishingPort;
 import com.example.linkedinagent.config.AppProperties;
 import com.example.linkedinagent.domain.publishing.LinkedInPublicationCommand;

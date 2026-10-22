@@ -5,6 +5,7 @@ import com.example.linkedinagent.application.ports.out.LinkedInOAuthClient;
 import com.example.linkedinagent.application.ports.out.OAuthTransactionPort;
 import com.example.linkedinagent.application.ports.out.TokenCipherPort;
 import com.example.linkedinagent.config.AppProperties;
+import com.example.linkedinagent.exception.LinkedInOAuthException;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;

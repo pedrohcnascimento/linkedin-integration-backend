@@ -2,6 +2,8 @@
 
 > **Registro histórico da etapa.** Este relatório documenta a implementação do Passo 8 e suas validações no momento em que foi concluída; não substitui o status consolidado em [`docs/status-atual.md`](../status-atual.md).
 
+> **Correção de estado posterior:** o smoke test OAuth real foi concluído depois deste relatório. O perfil `prod` também foi alterado posteriormente: hoje seleciona Oracle, não PostgreSQL. As instruções PostgreSQL e as pendências externas abaixo descrevem o estado histórico e não são procedimento vigente; consulte o README e [`docs/status-atual.md`](../status-atual.md).
+
 **Estado:** implementação automatizada concluída. A validação com o app real no Developer Portal ainda não foi executada porque cadastro, produtos, scopes e redirect URI não estão confirmados.
 
 ## Entregas

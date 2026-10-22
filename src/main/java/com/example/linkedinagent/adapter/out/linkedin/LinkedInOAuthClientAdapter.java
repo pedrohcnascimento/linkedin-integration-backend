@@ -1,7 +1,7 @@
 package com.example.linkedinagent.adapter.out.linkedin;
 
-import com.example.linkedinagent.application.linkedin.LinkedInOAuthConfigurationException;
-import com.example.linkedinagent.application.linkedin.LinkedInProviderException;
+import com.example.linkedinagent.exception.LinkedInOAuthConfigurationException;
+import com.example.linkedinagent.exception.LinkedInProviderException;
 import com.example.linkedinagent.application.ports.out.LinkedInOAuthClient;
 import com.example.linkedinagent.config.AppProperties;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;

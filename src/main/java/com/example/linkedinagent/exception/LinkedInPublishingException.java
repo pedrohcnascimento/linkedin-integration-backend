@@ -1,4 +1,4 @@
-package com.example.linkedinagent.application.publishing;
+package com.example.linkedinagent.exception;
 
 public class LinkedInPublishingException extends RuntimeException {
     private final String failureCode;

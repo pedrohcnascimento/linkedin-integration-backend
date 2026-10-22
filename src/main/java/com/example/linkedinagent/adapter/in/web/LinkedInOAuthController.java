@@ -2,11 +2,11 @@ package com.example.linkedinagent.adapter.in.web;
 
 import com.example.linkedinagent.adapter.out.security.AppUserPrincipal;
 import com.example.linkedinagent.application.linkedin.LinkedInConnection;
-import com.example.linkedinagent.application.linkedin.LinkedInOAuthException;
-import com.example.linkedinagent.application.linkedin.LinkedInOAuthConfigurationException;
+import com.example.linkedinagent.exception.LinkedInOAuthException;
+import com.example.linkedinagent.exception.LinkedInOAuthConfigurationException;
 import com.example.linkedinagent.application.linkedin.LinkedInOAuthService;
-import com.example.linkedinagent.application.linkedin.LinkedInProviderException;
-import com.example.linkedinagent.application.linkedin.TokenEncryptionException;
+import com.example.linkedinagent.exception.LinkedInProviderException;
+import com.example.linkedinagent.exception.TokenEncryptionException;
 import com.example.linkedinagent.application.ratelimit.RateLimitService;
 import jakarta.servlet.http.HttpServletRequest;
 import io.swagger.v3.oas.annotations.Operation;

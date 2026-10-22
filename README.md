@@ -6,7 +6,7 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-🚧 **Passo 10 — rascunho aprovado e idempotência** em andamento. O ciclo OAuth do Passo 8 está concluído e validado com o app real no Developer Portal (`ACTIVE`). A API já permite criar, listar, editar, aprovar e publicar rascunhos textuais com `Idempotency-Key`; histórico e mídia ainda não estão disponíveis. Ver [`docs/progress/STEP-10.md`](docs/progress/STEP-10.md).
+🚧 **Passo 10 — rascunhos e publicação textual** em andamento. OAuth foi validado com o app no Developer Portal (`ACTIVE`), e a API implementa criação, listagem paginada, edição antes da aprovação, aprovação e publicação via Posts API com `Idempotency-Key`. Ainda faltam histórico de publicações e validação robusta de falhas/requisições concorrentes. O perfil `prod` está configurado para Oracle, mas ainda não há evidência de validação contra um Oracle de teste. Veja [`docs/status-atual.md`](docs/status-atual.md) para o estado e o plano da próxima release.
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) e o roteiro, incluindo os próximos passos, em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
@@ -21,9 +21,9 @@ Para o **estado funcional e as pendências atuais**, prevalece [`docs/status-atu
 | Linguagem | Java 21 (LTS) |
 | Build | Maven |
 | Framework | Spring Boot **4.1.0** (Webmvc, Security, Validation, Actuator) |
-| Persistência | SQLite (local/testes) e PostgreSQL (produção), via JPA/Hibernate 7 + Flyway |
+| Persistência | SQLite (local/testes); Oracle configurado no perfil `prod`, ainda sem validação em banco de teste |
 | Autenticação externa | OAuth 2.0 + OpenID Connect com o LinkedIn |
-| LinkedIn | OAuth 2.0 e consulta de conexão implementados; publicação via **Posts API** planejada, ainda não implementada |
+| LinkedIn | OAuth 2.0 e publicação textual via **Posts API** implementados |
 | Documentação de API | springdoc-openapi 3.x |
 | Empacotamento | JAR executável (Spring Boot) |
 
@@ -37,16 +37,17 @@ Para o **estado funcional e as pendências atuais**, prevalece [`docs/status-atu
 - Token CSRF para requisições que alteram estado.
 - Conexão LinkedIn via OAuth 2.0, consulta sanitizada do estado da conexão e desconexão local. Tokens são cifrados em repouso e não são devolvidos pela API.
 - Rate limiting para autenticação e endpoints OAuth.
+- Rascunhos textuais: criação, listagem paginada, edição antes da aprovação, aprovação e publicação autenticada com `Idempotency-Key`.
+- Adaptador da Posts API para publicação textual de membro; respostas externas não são devolvidas sem sanitização.
 
 Essas funcionalidades são expostas pelos endpoints listados abaixo e cobertas por testes automatizados. O fluxo OAuth foi validado contra o app real no Developer Portal; o provedor continua sendo simulado na suíte automatizada.
 
 ### Planejado, ainda não implementado
 
-- Criação, listagem paginada, edição, aprovação e publicação textual de rascunho usando a Posts API, com idempotência por `Idempotency-Key`.
-- Casos de uso e endpoints para criar/revisar rascunhos, aprovar e publicar conteúdo, com histórico e idempotência.
+- Histórico paginado de publicações e uma política testada para falhas e concorrência na publicação idempotente.
 - Registro e organização local de oportunidades de vaga.
 
-As tabelas ou migrations preliminares existentes não significam que esses recursos estejam executáveis. **Não existem endpoints de rascunhos, publicações/histórico ou oportunidades**; os caminhos desses futuros endpoints ainda não estão definidos.
+As tabelas ou migrations preliminares de oportunidades não significam que esse recurso esteja executável. Não há endpoint para consultar/publicar o histórico de publicações nem endpoints de oportunidades.
 
 ### Fora do escopo
 
@@ -71,14 +72,20 @@ Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem 
 | `GET /api/v1/linkedin/oauth/callback` | Público, protegido por `state` de uso único | Conclui o OAuth e retorna estado sanitizado |
 | `GET /api/v1/linkedin/connection` | Sessão | Consulta o estado da conexão LinkedIn |
 | `DELETE /api/v1/linkedin/connection` | Sessão + CSRF | Remove a autorização local (`204`) |
+| `POST /api/v1/drafts` | Sessão + CSRF | Cria um rascunho textual |
+| `GET /api/v1/drafts?page=0&size=20` | Sessão | Lista os rascunhos do usuário; página de 0 a 50 itens |
+| `PATCH /api/v1/drafts/{id}` | Sessão + CSRF | Edita texto/título enquanto o rascunho está em `DRAFT` |
+| `POST /api/v1/drafts/{id}/approve` | Sessão + CSRF | Aprova o rascunho |
+| `POST /api/v1/drafts/{id}/publish` | Sessão + CSRF | Publica rascunho aprovado; exige `Idempotency-Key` |
 
 `GET /actuator/health` também está disponível para health check. A documentação interativa da API (`/swagger-ui.html`) e o OpenAPI (`/api-docs`) são habilitados apenas nos perfis `local` e `test`; no perfil `prod`, ambos ficam desativados.
 
 ## Próximos passos
 
-1. Validar o ciclo OAuth com o app configurado no Developer Portal e executar smoke test; validar também com JDK 21 e, antes de exposição pública, Redis distribuído e IP confiável no proxy.
-2. Seguir o planejamento: adaptador de publicação (Passo 9), rascunhos/aprovação/idempotência (Passo 10) e oportunidades locais (Passo 11).
-3. Completar endpoints e contrato OpenAPI, testes, segurança e observabilidade conforme os Passos 12–14. Nenhum desses itens deve ser considerado disponível até estar implementado e testado.
+1. Concluir a confiabilidade do Passo 10: testar falhas do provedor, publicação concorrente e repetição da mesma chave; definir explicitamente o comportamento seguro após resultado externo ambíguo.
+2. Adicionar endpoint de histórico paginado e testar isolamento do histórico por usuário.
+3. Executar validação do perfil `prod` em Oracle de teste descartável e confirmar JDK 21, Redis e configuração do IP atrás do proxy antes de exposição pública. A presença de dependências PostgreSQL no Maven não significa que PostgreSQL seja o banco configurado no perfil `prod`.
+4. Depois de fechar esse escopo, priorizar oportunidades locais e completar documentação OpenAPI, testes e hardening conforme [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md).
 
 ## Arquitetura
 
@@ -135,7 +142,7 @@ Nenhuma dessas variáveis deve conter valores reais no repositório.
 
 ### Oracle em produção
 
-O perfil `local` usa SQLite e o perfil `prod` usa o driver Oracle empacotado pela aplicação. Em produção, a aplicação executa as migrations Oracle do Flyway e inicia o Hibernate com `ddl-auto=validate` (não cria nem atualiza tabelas). A URL deve usar o formato Oracle aceito pelo ambiente, por exemplo `jdbc:oracle:thin:@oracle.fiap.com.br:1521:ORCL`.
+O perfil `local` usa SQLite e o perfil `prod` está configurado para Oracle, com driver e migration Oracle do Flyway e Hibernate `ddl-auto=validate` (não cria nem atualiza tabelas). Essa configuração não comprova que o schema tenha sido aplicado ou validado em um serviço Oracle; faça essa validação em banco de teste descartável antes de considerar o perfil pronto para produção. A URL deve usar o formato Oracle aceito pelo ambiente, por exemplo `jdbc:oracle:thin:@<host>:1521:<service-name>`.
 
 Configure no ambiente de execução, sem versionar credenciais:
 
@@ -158,15 +165,15 @@ CORS_ALLOWED_ORIGINS=https://<frontend>
 
 #### Rate limiting
 
-Login é limitado por IP (30 tentativas/15 min) e conta (8/15 min); cadastro por IP (10/h) e endereço de conta (3/24 h); início do OAuth por IP (30/15 min), usuário (10/h) e sessão (8/15 min); callback por IP (60/15 min) e state (6/15 min). Os contadores usam janelas fixas iniciadas na primeira tentativa. A resposta de limite é `429 RATE_LIMITED`, genérica, com `Retry-After` em segundos. Publicações ainda não têm rotas; o interceptor já aplica limites por IP, usuário e sessão em futuras operações de escrita sob `/api/v1/publications/**`.
+Login é limitado por IP (30 tentativas/15 min) e conta (8/15 min); cadastro por IP (10/h) e endereço de conta (3/24 h); início do OAuth por IP (30/15 min), usuário (10/h) e sessão (8/15 min); callback por IP (60/15 min) e state (6/15 min). A publicação de draft é limitada por IP (30/15 min), usuário (10/15 min) e sessão (10/15 min). Os contadores usam janelas fixas iniciadas na primeira tentativa. A resposta de limite é `429 RATE_LIMITED`, genérica, com `Retry-After` em segundos.
 
 No perfil `prod`, Redis é obrigatório e compartilhado por todas as instâncias. Scripts Lua incrementam atomicamente os contadores e as chaves expiram ao fim das janelas. Configure `RATE_LIMIT_REDIS_URL` com autenticação e TLS quando disponível, e use o mesmo `RATE_LIMIT_HMAC_KEY` Base64 de pelo menos 32 bytes em todas as instâncias (por exemplo, gere-o com `openssl rand -base64 32`); os valores usados nas chaves são HMACs, não IPs, e-mails, sessões ou state em claro. Se Redis estiver indisponível, as requisições limitadas falham fechadas com `503` e `Retry-After: 5`. Os perfis `local` e `test` usam armazenamento em memória, sem garantia entre reinícios ou instâncias, portanto não devem ser usados como mecanismo de produção distribuído.
 
 O servidor usa `getRemoteAddr()` e ignora `Forwarded`/`X-Forwarded-For` para evitar falsificação pelo cliente. Atrás de proxy, preserve o IP de origem até a aplicação ou configure o rate limiting no gateway confiável; não encaminhe headers fornecidos diretamente pelo cliente como se fossem confiáveis.
 
-Para validar a configuração de produção contra um banco PostgreSQL de teste vazio e descartável, defina `POSTGRES_TEST_URL`, `POSTGRES_TEST_USERNAME` e `POSTGRES_TEST_PASSWORD` e execute `mvn -Dtest=PostgreSqlProfileIntegrationTest test`. Esse teste sobe o perfil `prod`, aplica as migrations, confirma a conexão e `ddl-auto=validate`, e exercita persistência/consulta de usuário, autorização LinkedIn e consumo de transação OAuth. Não aponte essas variáveis para um banco de produção: o teste grava dados. Sem `POSTGRES_TEST_URL`, o teste é ignorado e a suíte normal continua usando SQLite.
+O Maven declara também dependências PostgreSQL, mas `application-prod.yml` seleciona Oracle, as migrations de produção disponíveis são Oracle e não há teste `PostgreSqlProfileIntegrationTest` no código atual. Portanto, não use o antigo comando PostgreSQL como evidência de validação do perfil `prod`. O teste automatizado do banco de produção ainda precisa ser criado/ajustado para o banco efetivamente escolhido e executado em uma instância descartável.
 
-Para exercitar o armazenamento distribuído, configure `RATE_LIMIT_REDIS_TEST_URL` para um Redis de teste descartável e execute `mvn -Dtest=RedisRateLimitStoreIntegrationTest test`. Sem essa variável, esses testes de integração são ignorados.
+Os testes atuais exercitam os limites com armazenamento simulado/em memória; não há teste de integração Redis no código-fonte presente. Valide Redis em ambiente descartável antes de depender dele em produção.
 
 ### Autenticação local
 
@@ -178,9 +185,10 @@ O callback está configurado como `http://localhost:8080/api/v1/linkedin/oauth/c
 
 ## Limitações atuais
 
-- Publicação, rascunhos, histórico e oportunidades ainda não têm casos de uso nem endpoints funcionais.
+- O histórico de publicações e oportunidades ainda não têm endpoints funcionais.
 - Não há refresh token presumido — depende do que o LinkedIn efetivamente conceder para o app registrado.
-- O perfil PostgreSQL de produção está configurado; antes do deploy, valide as migrations e o schema em um PostgreSQL de teste compatível com a versão do serviço.
+- Falhas conhecidas são registradas como `FAILED`; repetição da mesma chave após falha não republica automaticamente e retorna conflito. A recuperação e os resultados externos ambíguos ainda precisam de uma política validada.
+- O perfil `prod` está configurado para Oracle, mas sua migration/schema não têm teste de integração Oracle no repositório.
 
 ## Contribuindo
 

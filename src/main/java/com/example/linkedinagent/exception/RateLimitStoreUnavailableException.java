@@ -1,4 +1,4 @@
-package com.example.linkedinagent.application.ratelimit;
+package com.example.linkedinagent.exception;
 
 public class RateLimitStoreUnavailableException extends RuntimeException {
 

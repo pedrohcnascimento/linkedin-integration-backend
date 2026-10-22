@@ -1,14 +1,12 @@
 package com.example.linkedinagent.adapter.in.web;
 
-import com.example.linkedinagent.application.ratelimit.RateLimitExceededException;
-import com.example.linkedinagent.application.ratelimit.RateLimitStoreUnavailableException;
+import com.example.linkedinagent.exception.RateLimitExceededException;
+import com.example.linkedinagent.exception.RateLimitStoreUnavailableException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-
-import java.time.Duration;
 
 @RestControllerAdvice
 public class RateLimitExceptionHandler {

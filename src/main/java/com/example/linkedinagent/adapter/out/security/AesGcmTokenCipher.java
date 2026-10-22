@@ -1,6 +1,6 @@
 package com.example.linkedinagent.adapter.out.security;
 
-import com.example.linkedinagent.application.linkedin.TokenEncryptionException;
+import com.example.linkedinagent.exception.TokenEncryptionException;
 import com.example.linkedinagent.application.ports.out.TokenCipherPort;
 import com.example.linkedinagent.config.AppProperties;
 import org.springframework.stereotype.Component;

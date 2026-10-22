@@ -231,7 +231,9 @@ Versionada desde o início com prefixo `/api/v1`.
 
 ### 7.1 Endpoints iniciais
 
-| Método e rota | Finalidade | Autenticação | Resposta principal |
+Esta tabela mistura rotas implementadas com destinos planejados; ela não é um inventário do contrato atual. Atualmente há criação/listagem/edição de draft, aprovação e publicação textual. A consulta individual, histórico e oportunidades abaixo permanecem planejados e não devem ser usados como se estivessem disponíveis.
+
+| Método e rota | Finalidade | Autenticação | Resposta principal / estado |
 |---|---|---|---|
 | `GET /api/v1/linkedin/oauth/start` | Iniciar OAuth | Usuário local | `302` para o LinkedIn |
 | `GET /api/v1/linkedin/oauth/callback` | Processar callback | `state` válido | `302` ou resposta de conclusão |
@@ -239,14 +241,14 @@ Versionada desde o início com prefixo `/api/v1`.
 | `DELETE /api/v1/linkedin/connection` | Revogar conexão local | Usuário local | `204` |
 | `POST /api/v1/drafts` | Criar rascunho | Usuário local | `201` |
 | `GET /api/v1/drafts` | Listar rascunhos paginados | Usuário local | `200` |
-| `GET /api/v1/drafts/{id}` | Consultar rascunho | Usuário local | `200` |
+| `GET /api/v1/drafts/{id}` | Consultar rascunho | Usuário local | Planejado; não implementado |
 | `PATCH /api/v1/drafts/{id}` | Editar rascunho | Usuário local | `200` |
 | `POST /api/v1/drafts/{id}/approve` | Aprovar publicação | Usuário local | `200` |
-| `POST /api/v1/drafts/{id}/publish` | Publicar rascunho aprovado | Usuário local | `202` ou `201` |
-| `GET /api/v1/publications` | Histórico de publicações | Usuário local | `200` |
-| `POST /api/v1/opportunities` | Registrar oportunidade local | Usuário local | `201` |
-| `GET /api/v1/opportunities` | Filtrar oportunidades próprias | Usuário local | `200` |
-| `PATCH /api/v1/opportunities/{id}` | Atualizar status local | Usuário local | `200` |
+| `POST /api/v1/drafts/{id}/publish` | Publicar rascunho aprovado | Usuário local | Implementado; `201` inclusive no replay concluído |
+| `GET /api/v1/publications` | Histórico de publicações | Usuário local | Planejado; não implementado |
+| `POST /api/v1/opportunities` | Registrar oportunidade local | Usuário local | Planejado; não implementado |
+| `GET /api/v1/opportunities` | Filtrar oportunidades próprias | Usuário local | Planejado; não implementado |
+| `PATCH /api/v1/opportunities/{id}` | Atualizar status local | Usuário local | Planejado; não implementado |
 | `GET /actuator/health` | Health check | Conforme exposição configurada | `200` ou `503` |
 
 O endpoint de publicação deve verificar propriedade do rascunho, status `APPROVED`, existência de autorização ativa e ausência de publicação anterior com a mesma impressão digital de requisição. Exigir cabeçalho de idempotência (`Idempotency-Key`) para evitar duplicação em retries.
@@ -291,21 +293,18 @@ Usuário deve conseguir desconectar o LinkedIn — apagando/inutilizando tokens,
 
 Banco com controle de acesso por usuário, backups cifrados. Documentar quais dados vêm do LinkedIn, quais são criados pelo usuário e quais são derivados. Acesso interno aos tokens restrito ao adaptador de integração.
 
-## 12. Persistência PostgreSQL em produção
+## 12. Persistência local e perfil de produção
 
-O perfil `prod` usa o driver JDBC PostgreSQL gerenciado pelo Spring Boot, configura o dialeto PostgreSQL e mantém `ddl-auto=validate`. O perfil local continua usando SQLite. As migrations Flyway V1/V2 usam tipos portáveis (`TEXT`, `INTEGER`) e são aplicadas na inicialização; o Hibernate valida o mapeamento das entidades contra o schema já migrado.
+O perfil `local` usa SQLite. O `application-prod.yml` atual seleciona Oracle, usa `OracleDialect`, migration Flyway em `db/migration/oracle` e `ddl-auto=validate`. O Maven também declara driver e módulo Flyway para PostgreSQL, mas isso não configura PostgreSQL como perfil de produção: não há migration PostgreSQL nem `PostgreSqlProfileIntegrationTest` no código atual. A configuração Oracle tampouco tem teste de integração Oracle no repositório.
 
-Antes de um deploy:
+Antes de considerar qualquer banco pronto para produção:
 
-1. Fornecer `DATABASE_URL` no formato `jdbc:postgresql://<host>:<porta>/<banco>` e `DATABASE_USERNAME`/`DATABASE_PASSWORD` por secret manager ou configuração do serviço; configurar TLS conforme o provedor.
-2. Usar uma conta com permissões de migration na inicialização e manter o histórico Flyway acessível.
-3. Em um PostgreSQL de teste vazio e descartável, executar `mvn -Dtest=PostgreSqlProfileIntegrationTest test`. O teste inicia com perfil `prod`, aplica V1/V2, verifica conexão e validação Hibernate e executa operações de repositório para usuário, autorização LinkedIn, UUID, timestamps e consumo de transação.
-4. Executar a suíte geral `mvn clean test`; ela permanece isolada em SQLite e não acessa serviços externos.
-5. Só então promover a mesma configuração de schema para produção. Não execute o teste de integração em banco produtivo: ele grava dados.
+1. Confirmar qual banco é o destino aprovado; hoje a configuração `prod` aponta para Oracle, mas a dependência PostgreSQL e o planejamento histórico de migração criam ambiguidade.
+2. Em banco descartável da mesma tecnologia e versão compatível com o destino, testar migration em banco vazio, validação Hibernate e operações JPA de usuário, autorização, OAuth e publicação.
+3. Verificar constraints, transações e concorrência da idempotência, pois a implementação não pode assumir o comportamento do SQLite como prova de compatibilidade com Oracle ou PostgreSQL.
+4. Manter credenciais fora do repositório e aplicar migrations somente com conta autorizada e plano de rollback/recuperação adequado.
 
-Sem `POSTGRES_TEST_URL`, `POSTGRES_TEST_USERNAME` e `POSTGRES_TEST_PASSWORD`, o teste PostgreSQL é ignorado. O teste automatizado verifica operações JPA atuais (usuário e transação OAuth); tabelas de publicação/oportunidade não têm casos de uso implementados nesta etapa e não há queries de negócio dessas funcionalidades a validar ainda.
-
-Entidades, serviços, controllers, portas e regras de negócio não deveriam depender do banco concreto. Qualquer evolução nas migrations deve continuar compatível com SQLite e PostgreSQL ou declarar scripts separados por banco, acompanhados por testes nos dois perfis.
+Se o destino escolhido for PostgreSQL, isso exige alinhar configuração, dialeto, migrations e testes antes de declarar suporte; as dependências Maven sozinhas não são evidência. Não executar testes que gravam dados em banco produtivo.
 
 ## 13. Configuração por ambiente
 
@@ -335,12 +334,12 @@ CORS_ALLOWED_ORIGINS
 | 4 — Persistência SQLite | Driver JDBC, JPA/Hibernate, migrations, entidades iniciais | Testes de persistência passam em SQLite real |
 | 5 — Identidade e OAuth | Usuário local, state único, callback, token cifrado, desconexão | Testes de sucesso/expiração/replay/erro passam |
 | 6 — Adaptador LinkedIn | Cliente HTTP isolado e mapeadores para Share API | Testes simulados cobrem sucesso e falha |
-| 7 — Rascunhos e publicação | Estados, aprovação, idempotência, histórico, retry seguro | Sem publicação duplicada em retry conhecido |
+| 7 — Rascunhos e publicação | Estados, aprovação, idempotência, histórico e falhas | Replay conhecido não duplica publicação; concorrência e recuperação têm testes no banco escolhido |
 | 8 — Oportunidades locais | Registrar/classificar vagas de fontes autorizadas ou manuais | Sistema não precisa da sessão do LinkedIn |
 | 9 — API REST e documentação | Controllers, DTOs, validação, erros, OpenAPI, versionamento | Exemplos do README executam localmente |
 | 10 — Segurança/privacidade/observabilidade | CORS, CSRF, rate limit, logs, auditoria, exclusão, retenção | Sem tokens em logs nem acesso cruzado |
 | 11 — Docker e qualidade de portfólio | Execução padronizada, diagrama, documentação, testes, CI futuro | Clone novo inicia seguindo o README |
-| 12 — Preparação para PostgreSQL | Validar independência do domínio em relação ao banco | Migrations e testes passam nos dois bancos |
+| 12 — Banco de produção | Confirmar destino e validar configuração/migrations na tecnologia escolhida | Teste reprodutível passa no banco de destino além da suíte SQLite |
 
 A ordem reduz retrabalho: valida a plataforma real primeiro, estabiliza a fronteira externa antes das regras de negócio, mantém a persistência substituível.
 
@@ -399,7 +398,7 @@ O agente **não deve avançar automaticamente** quando um teste falhar, uma migr
 **Escopo realizado:** `application.yml` base; perfis local/prod/test; `AppProperties`; `VerifyEnvRunner`; `WebConfig`; carregamento de `.env` com spring-dotenv; `.env.example`; CORS restrito por configuração.
 **Adições benéficas posteriores:** cookies de sessão `HttpOnly` e `SameSite=Lax`, `Secure` em produção, e `PRAGMA foreign_keys=ON` em conexões SQLite local/test foram introduzidos com o Passo 7 e estão registrados como requisitos de ambiente relevantes.
 **Verificação:** teste de binding/contexto com perfil test; revisar que todos os defaults são não secretos; testar CORS com origens permitidas e rejeitadas; validar cookies e ausência de fallback para valores sensíveis no perfil prod.
-**Pendências/limites atuais:** `application-prod.yml` referencia credenciais PostgreSQL, mas o projeto atual só declara driver SQLite; o perfil prod não deve ser considerado pronto para implantação até o Passo 12 e não foi validado por estes testes. O teste usa strings fictícias — incluindo uma chave de cifragem de exemplo que ainda não tem contrato binário validado. Antes do OAuth, definir e validar o formato/tamanho real da chave sem inserir um valor real no Git. Conferir também parsing/trim de múltiplas origens CORS e não tratar a configuração local permissiva como configuração de produção.
+**Pendências/limites registrados à época:** validação do perfil `prod` e teste de banco estavam pendentes. A configuração atual foi alterada desde essa retrospectiva: `application-prod.yml` seleciona Oracle e o Maven declara também dependências PostgreSQL, mas não existe teste de integração Oracle ou PostgreSQL no código atual. Consulte a seção 12 e [`docs/status-atual.md`](status-atual.md); não use esta nota histórica como descrição da configuração vigente.
 
 ### Passo 6 — Criar schema SQLite e migrations
 **Objetivo:** estabelecer persistência reproduzível, schema versionado e mapeamentos JPA compatíveis com SQLite antes das regras de negócio.
@@ -437,22 +436,42 @@ O agente **não deve avançar automaticamente** quando um teste falhar, uma migr
 
 ### Passo 9 — Implementar o adaptador de publicação
 **Objetivo:** encapsular toda comunicação de publicação com o LinkedIn.
+**Estado atual:** adaptador Posts API para publicação textual de membro implementado e integrado ao fluxo do Passo 10. Não inclui artigo, mídia, organizações, leitura de posts ou agendamento. Ver [`docs/progress/STEP-09.md`](progress/STEP-09.md) e a [matriz de capacidades](linkedin-capability-matrix.md).
+**Critério restante:** manter testes simulados para headers, versão configurável, sucesso, resposta sem `x-restli-id`, rate limit e falhas externas; nenhum teste automatizado deve publicar conteúdo real.
 
 ### Passo 10 — Implementar rascunhos, aprovação e idempotência
 **Objetivo:** impedir publicação acidental ou duplicada.
+**Implementado:** `POST /api/v1/drafts`, `GET /api/v1/drafts`, `PATCH /api/v1/drafts/{id}`, aprovação e publicação textual. A propriedade é verificada pela sessão local; só `DRAFT` pode ser editado/aprovado e só `APPROVED` pode ser publicado. A publicação exige conexão ativa e `Idempotency-Key`; replay bem-sucedido devolve o resultado salvo, mantendo o status HTTP atual `201`.
+**Plano de conclusão:**
+1. Testar falha conhecida do provedor, persistência de `FAILED` e sanitização da resposta.
+2. Documentar e decidir o comportamento de nova tentativa após falha conhecida e após timeout/resultado ambíguo; não adicionar retry cego que possa duplicar post.
+3. Confirmar o banco suportado e preparar teste descartável; depois, testar chamadas simultâneas com mesma chave, mesma draft e chaves diferentes nesse banco.
+4. Implementar histórico paginado de publicações, com isolamento por proprietário e ordenação estável; o endpoint não existe ainda.
+5. Completar contrato OpenAPI e testes de integração para limites de paginação, propriedade, erros e replay.
+**Critério de conclusão:** contrato de falhas registrado, histórico disponível, concorrência e replay demonstrados por testes no banco de destino e na suíte local. A etapa permanece em andamento até cumprir esses critérios.
 
 ### Passo 11 — Adicionar oportunidades locais sem scraping
 **Objetivo:** apoiar busca de vagas sem automatizar o LinkedIn.
+**Plano:** confirmar primeiro a prioridade do recurso; definir campos e ciclo de vida apenas para dados informados/importados de fontes autorizadas; criar casos de uso, migrations específicas para os bancos suportados, endpoints com isolamento por usuário e testes. Não implementar scraping, navegação automatizada ou candidatura.
 
 ### Passo 12 — Finalizar a API REST e o contrato OpenAPI
+**Plano:** inventariar rotas existentes contra o contrato publicado; cobrir schemas, paginação, códigos de erro e exemplos de uso; verificar acesso local do Swagger e garantir que docs/OpenAPI permaneçam desabilitados em `prod`. A existência de anotações não substitui a revisão do contrato completo.
 
 ### Passo 13 — Completar testes automatizados
+**Plano:** separar cobertura unitária, HTTP/MockMvc e integração de banco; incluir falhas externas, resultado ambíguo, concorrência, isolamento, migrations e segurança. Executar build e suíte com JDK 21; manter serviços externos simulados, exceto smoke tests manuais autorizados.
 
 ### Passo 14 — Aplicar segurança, LGPD técnica e observabilidade
+**Plano:** revisar retenção e exclusão de dados, auditoria sem tokens/conteúdo desnecessário, logs e métricas de publicação, CORS/CSRF, Redis distribuído e confiança no IP do proxy. Documentar o que foi testado e o que requer infraestrutura externa.
 
 ### Passo 15 — Dockerizar e documentar a execução
+**Plano:** só após estabilizar perfis e banco, adicionar imagem reproduzível sem segredos/dados locais; testar configuração por ambiente, health check, volume quando aplicável, instruções de build e operação. Docker não existe no estado atual.
 
 ### Passo 16 — Revisão de portfólio e CI/CD, e validar migração experimental para PostgreSQL
+**Plano:** corrigir o título/escopo após confirmação do banco-alvo. Como o perfil atual é Oracle e as dependências incluem PostgreSQL, decidir se PostgreSQL é um segundo destino suportado ou dependência a remover; adicionar pipeline e validação apenas para destinos formalmente suportados. Não declarar portabilidade multibanco sem migrations e testes por banco.
+
+### Plano proposto para a próxima release
+
+O objetivo proposto é concluir o fluxo de publicação textual com histórico e comportamento de falha testado. A proposta não inclui mídia, oportunidades ou candidatura automática. A ordem executável e os critérios de validação estão em [`docs/status-atual.md`](status-atual.md); não iniciar decisões de recuperação automática enquanto os efeitos de timeout/resultado ambíguo não estiverem definidos.
 
 ## Checklist de passagem entre etapas
 

@@ -1,7 +1,9 @@
 # Matriz de capacidades — API do LinkedIn (v1)
 
-**Última verificação:** 22/09/2026, via busca web (Microsoft Learn / LinkedIn Developer docs e fontes secundárias qualificadas, citadas por link)
-**Responsável pela verificação:** agente de IA (Passo 2 do roteiro); revalidar a documentação oficial antes do Passo 9
+**Última verificação registrada:** 22/09/2026, via busca web (Microsoft Learn / LinkedIn Developer docs e fontes secundárias qualificadas, citadas por link)
+**Responsável pela verificação:** agente de IA (Passo 2 do roteiro); revalidar a documentação oficial antes da próxima release
+
+> O adaptador Posts API já foi implementado desde essa verificação. Isso não atualiza a pesquisa de capacidades: o perfil configura atualmente `Linkedin-Version: 202609`, e endpoints, payloads e versão mensal ainda precisam ser revalidados em documentação oficial antes da próxima release. Consulte o estado vigente em [`docs/status-atual.md`](status-atual.md).
 
 > Esta matriz é o contrato de escopo da v1. Nenhuma chamada fora daqui deve ser implementada sem atualizar este arquivo primeiro.
 

@@ -1,5 +1,7 @@
 package com.example.linkedinagent.application.ratelimit;
 
+import com.example.linkedinagent.exception.RateLimitExceededException;
+import com.example.linkedinagent.exception.RateLimitStoreUnavailableException;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;

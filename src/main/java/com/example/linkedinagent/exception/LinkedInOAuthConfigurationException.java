@@ -1,4 +1,4 @@
-package com.example.linkedinagent.application.linkedin;
+package com.example.linkedinagent.exception;
 
 public class LinkedInOAuthConfigurationException extends RuntimeException {
 
