@@ -26,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -292,6 +293,24 @@ class AuthControllerIntegrationTest {
     }
 
     @Test
+    void corsTrimsConfiguredOriginsAllowsCredentialsAndRejectsUnknownOrigins() throws Exception {
+        mockMvc.perform(options("/api/v1/auth/csrf")
+                        .header("Origin", "http://localhost:5174")
+                        .header("Access-Control-Request-Method", "GET"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string("Access-Control-Allow-Origin", "http://localhost:5174"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string("Access-Control-Allow-Credentials", "true"));
+
+        mockMvc.perform(options("/api/v1/auth/csrf")
+                        .header("Origin", "http://not-allowed.example")
+                        .header("Access-Control-Request-Method", "GET"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().doesNotExist("Access-Control-Allow-Origin"));
+    }
+
+    @Test
     void oauthCallbackPersistsEncryptedAuthorizationForInitiatingUserAndRejectsReplay() throws Exception {
         String email = UUID.randomUUID() + "@example.com";
         register(email);
@@ -402,6 +421,43 @@ class AuthControllerIntegrationTest {
         mockMvc.perform(get("/api/v1/linkedin/connection").session(session))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.connected").value(false));
+    }
+
+    @Test
+    void userInfoFailureConsumesStateAndCannotBeRetried() throws Exception {
+        String email = UUID.randomUUID() + "@example.com";
+        register(email);
+        MockHttpSession session = login(email);
+        when(linkedInOAuthClient.authorizationUri(anyString(), anyString()))
+                .thenAnswer(invocation -> URI.create(
+                        "https://www.linkedin.com/oauth/v2/authorization?state=" + invocation.getArgument(0)));
+
+        MvcResult start = mockMvc.perform(get("/api/v1/linkedin/oauth/start").session(session))
+                .andExpect(status().isFound())
+                .andReturn();
+        String state = UriComponentsBuilder.fromUriString(start.getResponse().getHeader("Location"))
+                .build()
+                .getQueryParams()
+                .getFirst("state");
+        when(linkedInOAuthClient.exchangeAuthorizationCode("authorization-code"))
+                .thenReturn(new LinkedInOAuthClient.AccessToken(
+                        "raw-access-token", 3600, Optional.empty(), Optional.empty()));
+        when(linkedInOAuthClient.userInfo("raw-access-token"))
+                .thenThrow(new LinkedInProviderException("provider private details"));
+
+        mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .param("state", state)
+                        .param("code", "authorization-code"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value("LINKEDIN_PROVIDER_ERROR"));
+
+        mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .param("state", state)
+                        .param("code", "authorization-code"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("LINKEDIN_AUTHORIZATION_FAILED"));
+        verify(linkedInOAuthClient).exchangeAuthorizationCode("authorization-code");
+        verify(linkedInOAuthClient).userInfo("raw-access-token");
     }
 
     @Test

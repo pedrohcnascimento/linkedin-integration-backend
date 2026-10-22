@@ -10,6 +10,8 @@ Este documento consolida o estado vigente observado no código e na configuraç�
 
 - Cadastro de usuários locais, autenticação por sessão, consulta do usuário autenticado, logout e proteção CSRF.
 - OAuth LinkedIn: início, callback com `state` de uso único, consulta sanitizada da conexão, desconexão local e tokens cifrados em repouso. A documentação existente registra smoke test com o aplicativo do Developer Portal (`ACTIVE`); a suíte automatizada simula o provedor.
+- No perfil local, a chave de cifragem é validada ao iniciar OAuth, não no startup da aplicação. O `state` é consumido antes das chamadas externas; falhas posteriores exigem iniciar novo fluxo.
+- Origens CORS são normalizadas com trim e validadas como origens HTTP/HTTPS exatas; wildcard e URLs que não sejam origem são rejeitados.
 - Rate limiting de autenticação, OAuth e escrita/publicação de drafts.
 - Persistência local SQLite e perfil `prod` configurado para Oracle, com migrations Flyway específicas e Hibernate em `ddl-auto=validate`.
 - Adaptador de publicação textual via Posts API, configurável por versão, e fluxo de drafts com criação, listagem paginada, edição antes de aprovação, aprovação e publicação autenticada.
@@ -23,6 +25,7 @@ Este documento consolida o estado vigente observado no código e na configuraç�
 - Falha conhecida do LinkedIn é registrada como `FAILED`. A mesma chave após falha retorna conflito; não há retry automático. Resultado externo ambíguo (por exemplo, timeout depois de o LinkedIn aceitar a publicação) não tem reconciliação implementada.
 - A publicação é feita pelo fluxo de `POST /api/v1/drafts/{id}/publish`; não existe endpoint autônomo de publicações.
 - O OpenAPI local tem anotações nos controllers, mas a completude do contrato para todos os casos, erros e respostas ainda deve ser verificada como parte do Passo 12.
+- A validação tardia de `TOKEN_ENCRYPTION_KEY` é intencional no perfil local para permitir iniciar a aplicação antes de configurar OAuth; inicie o fluxo somente após configurar a chave Base64 válida de 32 bytes. Logs e respostas não devem revelar o valor.
 
 ## Pendências e lacunas confirmadas
 

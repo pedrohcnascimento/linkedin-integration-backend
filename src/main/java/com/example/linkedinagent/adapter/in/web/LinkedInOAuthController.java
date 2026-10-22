@@ -70,6 +70,8 @@ public class LinkedInOAuthController {
             Endpoint chamado pelo LinkedIn após a autorização. Não invente nem edite `code` ou `state`; o navegador deve chegar aqui automaticamente.
 
             Em caso de sucesso, o access token é cifrado e armazenado localmente e a resposta retorna a conexão sanitizada. Em caso de recusa, o LinkedIn pode enviar `error=...`; nesse caso a API retorna `400`.
+
+            O `state` é consumido antes da troca do código e das chamadas externas. Se troca, consulta de identidade, cifragem ou persistência falhar, o mesmo callback não pode ser repetido; inicie um novo fluxo OAuth. Isso evita reutilizar `state` ou código de autorização potencialmente comprometido.
             """)
     public ResponseEntity<?> callback(
             @RequestParam(required = false) String code,

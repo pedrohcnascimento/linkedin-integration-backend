@@ -9,6 +9,11 @@ import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.Arrays;
+import java.util.List;
+
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
@@ -22,15 +27,49 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(@NonNull CorsRegistry registry) {
-        String allowedOrigins = appProperties.getSecurity().getCorsAllowedOrigins();
+        List<String> origins = parseAllowedOrigins(appProperties.getSecurity().getCorsAllowedOrigins());
 
-        if (StringUtils.hasText(allowedOrigins)) {
-            String[] origins = allowedOrigins.split(",");
+        if (!origins.isEmpty()) {
             registry.addMapping("/api/**")
-                    .allowedOrigins(origins)
+                    .allowedOrigins(origins.toArray(String[]::new))
                     .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                     .allowedHeaders("*")
                     .allowCredentials(true);
+        }
+    }
+
+    static List<String> parseAllowedOrigins(String configuredOrigins) {
+        if (!StringUtils.hasText(configuredOrigins)) {
+            return List.of();
+        }
+
+        List<String> origins = Arrays.stream(configuredOrigins.split(",", -1))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .toList();
+        for (String origin : origins) {
+            if (!isValidOrigin(origin)) {
+                throw new IllegalArgumentException("CORS_ALLOWED_ORIGINS contains an invalid origin.");
+            }
+        }
+        return origins;
+    }
+
+    private static boolean isValidOrigin(String origin) {
+        if ("*".equals(origin)) {
+            return false;
+        }
+        try {
+            URI uri = new URI(origin);
+            return ("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+                    && uri.getHost() != null
+                    && uri.getUserInfo() == null
+                    && (uri.getPath() == null || uri.getPath().isEmpty())
+                    && uri.getQuery() == null
+                    && uri.getFragment() == null
+                    && (uri.getPort() == -1 || (uri.getPort() >= 0 && uri.getPort() <= 65535));
+        } catch (URISyntaxException exception) {
+            return false;
         }
     }
 

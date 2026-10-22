@@ -33,7 +33,7 @@ app:
     scopes: "openid profile w_member_social"
   security:
     token-encryption-key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
-    cors-allowed-origins: "http://localhost:5173"
+    cors-allowed-origins: "http://localhost:5173, http://localhost:5174"
   rate-limit:
     hmac-key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
   base-url: "http://localhost:8080"

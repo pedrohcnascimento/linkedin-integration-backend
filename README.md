@@ -181,7 +181,11 @@ O cliente deve guardar o cookie de sessão com segurança e enviar o token CSRF 
 
 ### Conexão com o LinkedIn
 
-O callback está configurado como `http://localhost:8080/api/v1/linkedin/oauth/callback` apenas para desenvolvimento local. Em produção, configure a URI HTTPS exata também no Developer Portal. Os scopes padrão são `openid profile w_member_social`; os scopes efetivamente concedidos dependem dos produtos habilitados no app. Nenhum teste automatizado chama o LinkedIn real. A desconexão remove credenciais locais, mas não afirma revogação remota.
+No perfil `local`, a ausência de `TOKEN_ENCRYPTION_KEY` não impede a aplicação de iniciar; a chave é validada ao iniciar o OAuth e a operação retorna erro controlado se estiver ausente ou inválida. Configure uma chave Base64 que decodifique para exatamente 32 bytes antes de conectar o LinkedIn. O valor nunca deve ser registrado ou versionado.
+
+O callback está configurado como `http://localhost:8080/api/v1/linkedin/oauth/callback` apenas para desenvolvimento local. Em produção, configure a URI HTTPS exata também no Developer Portal. Os scopes padrão são `openid profile w_member_social`; os scopes efetivamente concedidos dependem dos produtos habilitados no app. O `state` OAuth é consumido antes da troca do código e das chamadas externas; se troca, UserInfo, cifragem ou persistência falhar, será necessário iniciar uma nova autorização, pois o callback não pode ser repetido. Nenhum teste automatizado chama o LinkedIn real. A desconexão remove credenciais locais, mas não afirma revogação remota.
+
+`CORS_ALLOWED_ORIGINS` aceita uma lista separada por vírgulas de origens HTTP/HTTPS exatas; espaços em torno de cada origem são ignorados e entradas vazias são descartadas. URLs com caminho, credenciais, query, fragmento ou wildcard são inválidas. Como as sessões usam credenciais, não configure `*`.
 
 ## Limitações atuais
 
