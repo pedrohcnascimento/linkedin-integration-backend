@@ -56,6 +56,10 @@ class ApiDocumentationLocalProfileTest {
                         containsString("somente publicações do usuário autenticado")))
                 .andExpect(jsonPath("$.paths['/api/v1/drafts/{id}'].patch.description",
                         containsString("Só funciona enquanto o draft estiver em DRAFT")))
+                .andExpect(jsonPath("$.paths['/api/v1/drafts/{id}/publish'].post.responses['409'].description",
+                        containsString("reconciliação")))
+                .andExpect(jsonPath("$.paths['/api/v1/drafts/{id}/publish'].post.responses['502'].description",
+                        containsString("desconhecido")))
                 .andExpect(jsonPath("$.components.schemas.CreateDraftRequest.properties.mediaCategory.example",
                         org.hamcrest.Matchers.is("NONE")))
                 .andExpect(jsonPath("$.paths['/api/v1/drafts'].post.requestBody.content['application/json'].examples['Draft textual válido'].value.mediaCategory",

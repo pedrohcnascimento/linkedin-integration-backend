@@ -253,6 +253,38 @@ class DraftControllerIntegrationTest {
     }
 
     @Test
+    void ambiguousPublicationIsPersistedAndBlocksRetriesWithAnyKey() throws Exception {
+        MockHttpSession session = loginAndRegister();
+        UUID draftId = createDraft(session);
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", draftId)
+                        .session(session).with(csrf()))
+                .andExpect(status().isOk());
+        when(publishingPort.publish(any(), any()))
+                .thenThrow(new LinkedInPublishingException("LINKEDIN_PROVIDER_UNAVAILABLE", "transport failure", true));
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "ambiguous-key"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value("LINKEDIN_RESULT_UNKNOWN"));
+
+        mockMvc.perform(get("/api/v1/publications").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].status").value("OUTCOME_UNKNOWN"))
+                .andExpect(jsonPath("$.content[0].failureCode").value("LINKEDIN_RESULT_UNKNOWN"));
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "ambiguous-key"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PUBLICATION_ALREADY_PROCESSED"));
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "different-key"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PUBLICATION_OUTCOME_UNKNOWN"));
+        verify(publishingPort, times(1)).publish(any(), any());
+    }
+
+    @Test
     void publicationHistoryRejectsUnsafePageSize() throws Exception {
         MockHttpSession session = loginAndRegister();
 

@@ -58,7 +58,8 @@ public class LinkedInPublishingClientAdapter implements LinkedInPublishingPort {
             if (externalPostId == null || externalPostId.isBlank()) {
                 throw new LinkedInPublishingException(
                         "LINKEDIN_INVALID_PROVIDER_RESPONSE",
-                        "LinkedIn returned no publication identifier.");
+                        "LinkedIn returned no publication identifier.",
+                        true);
             }
             return new PublicationResult(externalPostId);
         } catch (LinkedInPublishingException exception) {
@@ -68,7 +69,8 @@ public class LinkedInPublishingClientAdapter implements LinkedInPublishingPort {
         } catch (RestClientException exception) {
             throw new LinkedInPublishingException(
                     "LINKEDIN_PROVIDER_UNAVAILABLE",
-                    "LinkedIn provider request failed.");
+                    "LinkedIn provider request failed.",
+                    true);
         }
     }
 
@@ -105,6 +107,7 @@ public class LinkedInPublishingClientAdapter implements LinkedInPublishingPort {
             case 503 -> "LINKEDIN_PROVIDER_UNAVAILABLE";
             default -> "LINKEDIN_PROVIDER_HTTP_ERROR";
         };
-        return new LinkedInPublishingException(code, "LinkedIn provider request failed.");
+        boolean outcomeUnknown = status < 400 || status >= 500 || status == 408 || status == 409;
+        return new LinkedInPublishingException(code, "LinkedIn provider request failed.", outcomeUnknown);
     }
 }

@@ -13,10 +13,13 @@ import com.example.linkedinagent.domain.publishing.PublicationResult;
 import com.example.linkedinagent.exception.DraftWorkflowException;
 import com.example.linkedinagent.exception.LinkedInPublishingException;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.HttpStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
@@ -25,6 +28,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -36,6 +40,7 @@ public class DraftWorkflowService {
     private final TokenCipherPort tokenCipher;
     private final LinkedInPublishingPort publishingPort;
     private final Clock clock;
+    private final TransactionTemplate transactionTemplate;
 
     public DraftWorkflowService(
             ContentDraftRepository draftRepository,
@@ -43,13 +48,16 @@ public class DraftWorkflowService {
             LinkedInAuthorizationPort authorizationPort,
             TokenCipherPort tokenCipher,
             LinkedInPublishingPort publishingPort,
-            Clock clock) {
+            Clock clock,
+            PlatformTransactionManager transactionManager) {
         this.draftRepository = draftRepository;
         this.publicationRepository = publicationRepository;
         this.authorizationPort = authorizationPort;
         this.tokenCipher = tokenCipher;
         this.publishingPort = publishingPort;
         this.clock = clock;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     @Transactional
@@ -137,20 +145,50 @@ public class DraftWorkflowService {
         return draftRepository.saveAndFlush(draft);
     }
 
-    @Transactional(noRollbackFor = LinkedInPublishingException.class)
     public PublicationEntity publish(UUID appUserId, UUID draftId, String idempotencyKey) {
         if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 200) {
             throw error("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key is required.", HttpStatus.BAD_REQUEST);
         }
-        ContentDraftEntity draft = ownedDraft(appUserId, draftId);
+        PublishAttempt attempt = Objects.requireNonNull(
+                transactionTemplate.execute(transaction -> reservePublication(appUserId, draftId, idempotencyKey)),
+                "Publication reservation transaction returned no result.");
+        if (attempt.replay()) {
+            return attempt.publication();
+        }
+
+        PublicationResult result;
+        try {
+            result = publishingPort.publish(attempt.accessToken(), attempt.command());
+        } catch (LinkedInPublishingException exception) {
+            transactionTemplate.execute(transaction -> {
+                recordPublicationFailure(attempt.publication().getId(), exception);
+                return null;
+            });
+            throw exception;
+        }
+        return Objects.requireNonNull(transactionTemplate.execute(transaction ->
+                completePublication(appUserId, draftId, attempt.publication().getId(), result)),
+                "Publication completion transaction returned no result.");
+    }
+
+    private PublishAttempt reservePublication(UUID appUserId, UUID draftId, String idempotencyKey) {
+        ContentDraftEntity draft = draftRepository.findLockedByIdAndAppUser_Id(draftId, appUserId)
+                .orElseThrow(() -> error("DRAFT_NOT_FOUND", "Draft was not found.", HttpStatus.NOT_FOUND));
         String fingerprint = fingerprint(appUserId, draft, idempotencyKey);
         var existing = publicationRepository.findByAppUser_IdAndRequestFingerprint(appUserId, fingerprint);
         if (existing.isPresent()) {
             PublicationEntity publication = existing.get();
             if ("PUBLISHED".equals(publication.getStatus())) {
-                return publication;
+                return new PublishAttempt(publication, null, null, true);
             }
-            throw error("PUBLICATION_ALREADY_PROCESSED", "This idempotent publication request was already processed.", HttpStatus.CONFLICT);
+            throw error("PUBLICATION_ALREADY_PROCESSED",
+                    "This idempotent publication request was already processed.", HttpStatus.CONFLICT);
+        }
+        if (publicationRepository.existsByAppUser_IdAndDraft_IdAndStatus(appUserId, draftId, "OUTCOME_UNKNOWN")
+                || publicationRepository.existsByAppUser_IdAndDraft_IdAndStatus(appUserId, draftId, "PUBLISHING")) {
+            throw error("PUBLICATION_OUTCOME_UNKNOWN",
+                    "A previous publication attempt is unresolved; reconcile it before retrying.",
+                    HttpStatus.CONFLICT);
         }
         if (!"APPROVED".equals(draft.getStatus())) {
             throw error("DRAFT_NOT_APPROVED", "Only an APPROVED draft can be published.", HttpStatus.UNPROCESSABLE_ENTITY);
@@ -162,38 +200,47 @@ public class DraftWorkflowService {
                 .orElseThrow(() -> error("LINKEDIN_CONNECTION_REQUIRED", "An active LinkedIn connection is required.", HttpStatus.UNPROCESSABLE_ENTITY));
         String accessToken = tokenCipher.decrypt(credentials.encryptedAccessToken());
 
-        Instant now = clock.instant();
         PublicationEntity publication = new PublicationEntity();
         publication.setId(UUID.randomUUID());
         publication.setAppUser(referenceUser(appUserId));
         publication.setDraft(draft);
         publication.setRequestFingerprint(fingerprint);
         publication.setStatus("PUBLISHING");
-        publication.setCreatedAt(now);
+        publication.setCreatedAt(clock.instant());
         try {
             publicationRepository.saveAndFlush(publication);
         } catch (DataIntegrityViolationException exception) {
             throw error("PUBLICATION_ALREADY_PROCESSED",
                     "This idempotent publication request was already processed.", HttpStatus.CONFLICT);
         }
+        LinkedInPublicationCommand command = new LinkedInPublicationCommand(credentials.memberSubject(),
+                draft.getText(), LinkedInPublicationCommand.Visibility.PUBLIC);
+        return new PublishAttempt(publication, accessToken, command, false);
+    }
 
-        try {
-            PublicationResult result = publishingPort.publish(accessToken,
-                    new LinkedInPublicationCommand(credentials.memberSubject(), draft.getText(),
-                            LinkedInPublicationCommand.Visibility.PUBLIC));
-            publication.setExternalPostId(result.externalPostId());
-            publication.setStatus("PUBLISHED");
-            publication.setPublishedAt(clock.instant());
-            draft.setStatus("PUBLISHED");
-            draft.setUpdatedAt(clock.instant());
-            draftRepository.save(draft);
-            return publicationRepository.saveAndFlush(publication);
-        } catch (LinkedInPublishingException exception) {
-            publication.setStatus("FAILED");
-            publication.setFailureCode(exception.getFailureCode());
-            publicationRepository.saveAndFlush(publication);
-            throw exception;
-        }
+    private PublicationEntity completePublication(UUID appUserId, UUID draftId, UUID publicationId,
+                                                   PublicationResult result) {
+        PublicationEntity publication = publicationRepository.findById(publicationId)
+                .orElseThrow(() -> new IllegalStateException("Reserved publication was not found."));
+        ContentDraftEntity draft = draftRepository.findLockedByIdAndAppUser_Id(draftId, appUserId)
+                .orElseThrow(() -> new IllegalStateException("Reserved draft was not found."));
+        publication.setExternalPostId(result.externalPostId());
+        publication.setStatus("PUBLISHED");
+        publication.setPublishedAt(clock.instant());
+        draft.setStatus("PUBLISHED");
+        draft.setUpdatedAt(clock.instant());
+        draftRepository.save(draft);
+        return publicationRepository.saveAndFlush(publication);
+    }
+
+    private void recordPublicationFailure(UUID publicationId, LinkedInPublishingException exception) {
+        PublicationEntity publication = publicationRepository.findById(publicationId)
+                .orElseThrow(() -> new IllegalStateException("Reserved publication was not found."));
+        publication.setStatus(exception.isOutcomeUnknown() ? "OUTCOME_UNKNOWN" : "FAILED");
+        publication.setFailureCode(exception.isOutcomeUnknown()
+                ? "LINKEDIN_RESULT_UNKNOWN"
+                : exception.getFailureCode());
+        publicationRepository.saveAndFlush(publication);
     }
 
     private ContentDraftEntity ownedDraft(UUID appUserId, UUID draftId) {
@@ -220,5 +267,9 @@ public class DraftWorkflowService {
 
     private DraftWorkflowException error(String code, String message, HttpStatus status) {
         return new DraftWorkflowException(code, message, status);
+    }
+
+    private record PublishAttempt(PublicationEntity publication, String accessToken,
+                                  LinkedInPublicationCommand command, boolean replay) {
     }
 }

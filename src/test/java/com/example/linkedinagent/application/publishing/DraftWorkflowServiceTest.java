@@ -10,6 +10,8 @@ import com.example.linkedinagent.exception.DraftWorkflowException;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -23,8 +25,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 class DraftWorkflowServiceTest {
 
@@ -38,15 +40,19 @@ class DraftWorkflowServiceTest {
         LinkedInAuthorizationPort authorizationPort = mock(LinkedInAuthorizationPort.class);
         TokenCipherPort tokenCipher = mock(TokenCipherPort.class);
         LinkedInPublishingPort publishingPort = mock(LinkedInPublishingPort.class);
+        PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+        when(transactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
 
         ContentDraftEntity draft = new ContentDraftEntity();
         draft.setId(draftId);
         draft.setText("Approved text");
         draft.setStatus("APPROVED");
         draft.setApprovedAt(now.minusSeconds(30));
-        when(draftRepository.findByIdAndAppUser_Id(draftId, userId)).thenReturn(Optional.of(draft));
+        when(draftRepository.findLockedByIdAndAppUser_Id(draftId, userId)).thenReturn(Optional.of(draft));
         when(publicationRepository.findByAppUser_IdAndRequestFingerprint(any(), anyString()))
                 .thenReturn(Optional.empty());
+        when(publicationRepository.existsByAppUser_IdAndDraft_IdAndStatus(userId, draftId, "OUTCOME_UNKNOWN"))
+                .thenReturn(false);
         when(authorizationPort.findCredentials(userId)).thenReturn(Optional.of(
                 new LinkedInAuthorizationPort.LinkedInAuthorizationCredentials(
                         "member-subject", "encrypted-token", "ACTIVE", now.plusSeconds(3600))));
@@ -60,7 +66,8 @@ class DraftWorkflowServiceTest {
                 authorizationPort,
                 tokenCipher,
                 publishingPort,
-                Clock.fixed(now, ZoneOffset.UTC));
+                Clock.fixed(now, ZoneOffset.UTC),
+                transactionManager);
 
         assertThatThrownBy(() -> service.publish(userId, draftId, "same-key"))
                 .isInstanceOfSatisfying(DraftWorkflowException.class, exception -> {

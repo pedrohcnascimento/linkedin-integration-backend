@@ -85,7 +85,36 @@ class LinkedInPublishingClientAdapterTest {
                 new LinkedInPublicationCommand(
                         "member-123", "Hello LinkedIn", LinkedInPublicationCommand.Visibility.PUBLIC)))
                 .isInstanceOf(LinkedInPublishingException.class)
-                .hasMessage("LinkedIn returned no publication identifier.");
+                .hasMessage("LinkedIn returned no publication identifier.")
+                .satisfies(exception -> assertThat(((LinkedInPublishingException) exception).isOutcomeUnknown()).isTrue());
+        server.verify();
+    }
+
+    @Test
+    void treatsProviderServerErrorsAsAmbiguousOutcomes() {
+        server.expect(requestTo("https://api.linkedin.com/rest/posts"))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE));
+
+        assertThatThrownBy(() -> adapter.publish(
+                "access-token",
+                new LinkedInPublicationCommand(
+                        "member-123", "Hello LinkedIn", LinkedInPublicationCommand.Visibility.PUBLIC)))
+                .isInstanceOfSatisfying(LinkedInPublishingException.class,
+                        exception -> assertThat(exception.isOutcomeUnknown()).isTrue());
+        server.verify();
+    }
+
+    @Test
+    void treatsProviderConflictAsAnAmbiguousOutcome() {
+        server.expect(requestTo("https://api.linkedin.com/rest/posts"))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.CONFLICT));
+
+        assertThatThrownBy(() -> adapter.publish(
+                "access-token",
+                new LinkedInPublicationCommand(
+                        "member-123", "Hello LinkedIn", LinkedInPublicationCommand.Visibility.PUBLIC)))
+                .isInstanceOfSatisfying(LinkedInPublishingException.class,
+                        exception -> assertThat(exception.isOutcomeUnknown()).isTrue());
         server.verify();
     }
 

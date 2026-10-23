@@ -126,6 +126,11 @@ public class DraftController {
 
     @PostMapping("/drafts/{id}/publish")
     @Operation(summary = "Publicar um draft aprovado", description = "Publica no LinkedIn um draft APPROVED. Execute primeiro o fluxo OAuth do LinkedIn. Requer o header Idempotency-Key para evitar publicação duplicada.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Publicação concluída ou replay da publicação concluída."),
+            @ApiResponse(responseCode = "409", description = "A tentativa já foi processada ou requer reconciliação antes de novo envio."),
+            @ApiResponse(responseCode = "502", description = "O resultado externo é desconhecido; reconcilie no LinkedIn antes de tentar novamente.")
+    })
     public ResponseEntity<PublicationResponse> publish(
             @AuthenticationPrincipal AppUserPrincipal user,
             @PathVariable UUID id,
@@ -168,6 +173,11 @@ public class DraftController {
 
     @ExceptionHandler(LinkedInPublishingException.class)
     ResponseEntity<ApiError> handleLinkedInPublishing(LinkedInPublishingException exception) {
+        if (exception.isOutcomeUnknown()) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body(new ApiError("LINKEDIN_RESULT_UNKNOWN",
+                            "LinkedIn may have accepted the publication; reconcile it before retrying."));
+        }
         HttpStatus status = "LINKEDIN_RATE_LIMITED".equals(exception.getFailureCode())
                 ? HttpStatus.TOO_MANY_REQUESTS : HttpStatus.BAD_GATEWAY;
         return ResponseEntity.status(status)
