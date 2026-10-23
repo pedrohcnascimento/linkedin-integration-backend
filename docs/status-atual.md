@@ -1,7 +1,7 @@
 # Status atual do projeto
 
-**Atualizado em:** 21/10/2026
-**Etapa atual:** Passo 10 em andamento — fluxo textual e histórico implementados; validação de concorrência e recuperação pendentes
+**Atualizado em:** 22/10/2026
+**Etapa atual:** Passo 10 em andamento — reserva durável e bloqueio de resultados ambíguos implementados; validação Oracle e revisão OpenAPI pendentes
 **Referências:** [`docs/progress/STEP-10.md`](progress/STEP-10.md) e o [plano da próxima release](planejamento-tecnico.md#plano-proposto-para-a-próxima-release)
 
 Este documento consolida o estado vigente observado no código e na configuração do projeto. Os relatórios em `docs/progress/` registram decisões e validações do momento em que foram escritos; não são a fonte para pendências atuais.
@@ -16,38 +16,41 @@ Este documento consolida o estado vigente observado no código e na configuraç�
 - Persistência local SQLite e perfil `prod` configurado para Oracle, com migrations Flyway específicas e Hibernate em `ddl-auto=validate`.
 - Adaptador de publicação textual via Posts API, configurável por versão, e fluxo de drafts com criação, listagem paginada, edição antes de aprovação, aprovação e publicação autenticada.
 - Publicação exige `Idempotency-Key`; replay de publicação já concluída retorna a publicação existente sem chamar novamente o LinkedIn. O contrato HTTP atual responde `201` também no replay.
-- Histórico `GET /api/v1/publications` é paginado, ordenado por `createdAt` e UUID descendentes, limitado ao usuário autenticado e a 50 itens por página. Inclui publicações com status `PUBLISHED` ou `FAILED`.
+- Histórico `GET /api/v1/publications` é paginado, ordenado por `createdAt` e UUID descendentes, limitado ao usuário autenticado e a 50 itens por página. Pode incluir publicações `PUBLISHED`, `FAILED`, `PUBLISHING` ou `OUTCOME_UNKNOWN`.
 - Falhas conhecidas são registradas como `FAILED`; repetição da mesma chave retorna `409` sem nova chamada ao LinkedIn. Uma colisão de unicidade no registro inicial também é convertida para conflito antes da chamada externa.
+- A reserva `PUBLISHING` é confirmada em transação antes da chamada ao LinkedIn. Ela continua bloqueando tentativas se o processo cair antes de finalizar.
+- Falha de transporte, respostas HTTP 408/409/5xx ou resposta de sucesso sem `x-restli-id` são tratadas como `OUTCOME_UNKNOWN`; a mesma chave e novas chaves para o mesmo draft são bloqueadas até reconciliação manual.
+- A reserva usa lock pessimista no draft para impedir que chaves diferentes iniciem publicação concorrente do mesmo draft.
 - Testes HTTP cobrem isolamento e paginação do histórico, falha persistida e replay impedido. O teste de colisão usa repositório simulado; concorrência no banco real continua sem validação.
 
 ## Limites funcionais atuais
 
 - Apenas drafts textuais são aceitos; mídia e artigos são rejeitados.
 - Não há endpoints de oportunidades.
-- Falha conhecida do LinkedIn é registrada como `FAILED`. A mesma chave após falha retorna conflito; não há retry automático. Resultado externo ambíguo (por exemplo, timeout depois de o LinkedIn aceitar a publicação) não tem reconciliação implementada.
+- Falha conhecida do LinkedIn é registrada como `FAILED`. A mesma chave após falha retorna conflito; não há retry automático. Resultado externo ambíguo é salvo como `OUTCOME_UNKNOWN` e bloqueia qualquer nova chave para o draft. A reconciliação é manual; não há endpoint administrativo.
+- Um registro `PUBLISHING` remanescente pode indicar chamada em curso ou interrupção do processo; novas tentativas são bloqueadas e é necessário reconciliar no LinkedIn antes de qualquer reenvio.
 - A publicação é feita pelo fluxo de `POST /api/v1/drafts/{id}/publish`; não existe endpoint autônomo de publicações.
 - O OpenAPI local tem anotações nos controllers, mas a completude do contrato para todos os casos, erros e respostas ainda deve ser verificada como parte do Passo 12.
 - A validação tardia de `TOKEN_ENCRYPTION_KEY` é intencional no perfil local para permitir iniciar a aplicação antes de configurar OAuth; inicie o fluxo somente após configurar a chave Base64 válida de 32 bytes. Logs e respostas não devem revelar o valor.
 
 ## Pendências e lacunas confirmadas
 
-1. Definir recuperação segura após timeout/resultado externo ambíguo, sem arriscar posts duplicados.
-2. Validar requisições concorrentes com a mesma chave de idempotência em banco real; teste atual apenas cobre a colisão única simulada.
-3. Resolver a divergência de banco: `application-prod.yml` seleciona Oracle e há migration Oracle, enquanto o Maven também declara dependências PostgreSQL. Não há teste de integração PostgreSQL nem Oracle no código atual; a configuração de produção não foi comprovada contra um banco real de teste.
-4. Revalidar a versão e o payload da Posts API em documentação oficial; a matriz registra verificação em 22/09/2026 e a configuração atual usa `Linkedin-Version: 202609`.
-5. Validar com JDK 21 no ambiente-alvo e, antes de exposição pública, validar Redis compartilhado e o tratamento de IP de origem atrás do proxy confiável.
-6. Definir e implementar o escopo local de oportunidades, se continuar desejado, depois do fechamento do fluxo de publicação.
+1. Executar testes de concorrência com a mesma chave e chaves diferentes, além de migrations e validação Hibernate, em Oracle descartável. Oracle foi confirmado como alvo, mas não há serviço ou teste Oracle no repositório atual.
+2. Completar a revisão OpenAPI e verificar schemas e respostas para `OUTCOME_UNKNOWN`, conflito de replay e histórico.
+3. Revalidar a versão e o payload da Posts API em documentação oficial; a matriz registra verificação em 22/09/2026 e a configuração atual usa `Linkedin-Version: 202609`.
+4. Validar com JDK 21 no ambiente-alvo e, antes de exposição pública, validar Redis compartilhado e o tratamento de IP de origem atrás do proxy confiável.
+5. Definir e implementar o escopo local de oportunidades, se continuar desejado, depois do fechamento do fluxo de publicação.
 
-Os itens 1–6 são trabalho de confiabilidade/validação e não devem ser descritos como concluídos. O item 7 depende de priorização de produto. A existência de entidades ou tabelas preliminares não significa que oportunidades estejam disponíveis.
+Os itens 1–4 são trabalho de confiabilidade/validação e não devem ser descritos como concluídos. O item 5 depende de priorização de produto. A existência de entidades ou tabelas preliminares não significa que oportunidades estejam disponíveis.
 
 ## Plano proposto para a próxima release
 
 **Objetivo de release proposto:** tornar o fluxo de publicação textual observável e confiável, sem ampliar para mídia ou oportunidades. Este recorte é uma proposta baseada nas lacunas imediatas do código, não uma decisão confirmada de produto.
 
-1. **Fechar o contrato de idempotência e falhas.** Documentar respostas atuais; cobrir sucesso, replay, falha conhecida e timeout/resultado ambíguo. Decidir a regra de recuperação antes de implementar retry, considerando que não há garantia de exatamente-uma-vez entre o banco local e o LinkedIn.
-2. **Confirmar o banco suportado.** Decidir se o destino é Oracle (o que `prod` configura hoje) ou PostgreSQL; estabelecer um banco descartável e teste reprodutível para migrations, validação Hibernate e operações de publicação. Se o destino for PostgreSQL, alinhar profile e migrations antes de declarar suporte.
-3. **Endurecer concorrência e persistência.** Criar testes concorrentes para a mesma chave e chaves diferentes; verificar unicidade e estados parciais no banco escolhido. Não assumir compatibilidade multibanco sem executar a validação correspondente.
-4. **Completar o contrato do histórico.** Verificar schemas, exemplos OpenAPI e comportamento de remoção do draft associado; o endpoint paginado e seus testes HTTP já estão implementados.
+1. **Fechar o contrato de idempotência e falhas.** A política implementada bloqueia reenvio após resultado ambíguo e exige reconciliação manual; validar sucesso, replay, falha conhecida e reserva `PUBLISHING` interrompida.
+2. **Validar o banco suportado.** Oracle é o destino confirmado para `prod`; executar migrations, validação Hibernate e operações de publicação em schema descartável. As dependências PostgreSQL não significam suporte PostgreSQL.
+3. **Demonstrar concorrência e persistência.** Criar testes concorrentes para a mesma chave e chaves diferentes em Oracle; verificar lock pessimista, unicidade e estados parciais.
+4. **Completar o contrato do histórico.** Verificar schemas, exemplos OpenAPI, `OUTCOME_UNKNOWN` e comportamento de remoção do draft associado; o endpoint paginado e seus testes HTTP já estão implementados.
 5. **Executar a verificação de release.** Rodar build e suíte completa com JDK 21, revalidar a versão/payload da Posts API em documentação oficial, verificar OpenAPI, rate limiting/Redis e origem de proxy no ambiente suportado; atualizar README, limitações e instruções com resultados reproduzíveis.
 
 **Fora deste recorte:** uploads de mídia/artigos, oportunidades, Docker e automações de candidatura. Só incluir após decisão explícita e atualização do escopo da release.

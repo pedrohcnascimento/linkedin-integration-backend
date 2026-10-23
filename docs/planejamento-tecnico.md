@@ -444,10 +444,10 @@ O agente **não deve avançar automaticamente** quando um teste falhar, uma migr
 **Implementado:** `POST /api/v1/drafts`, `GET /api/v1/drafts`, `PATCH /api/v1/drafts/{id}`, aprovação e publicação textual. A propriedade é verificada pela sessão local; só `DRAFT` pode ser editado/aprovado e só `APPROVED` pode ser publicado. A publicação exige conexão ativa e `Idempotency-Key`; replay bem-sucedido devolve o resultado salvo, mantendo o status HTTP atual `201`.
 **Entregue nesta continuação:** `GET /api/v1/publications` fornece histórico paginado por usuário, ordenado por `createdAt` e UUID descendentes. Falhas conhecidas ficam em `FAILED` e o replay da mesma chave retorna conflito, sem nova chamada externa. Colisões de unicidade durante a gravação inicial também retornam `409` antes de chamar o LinkedIn.
 **Plano de conclusão:**
-1. Documentar e decidir a recuperação após timeout/resultado externo ambíguo; não adicionar retry cego que possa duplicar post.
-2. Confirmar o banco suportado e preparar teste descartável; validar chamadas simultâneas com mesma chave, mesma draft e chaves diferentes nesse banco. O teste de colisão existente usa repositório simulado, não substitui concorrência real.
-3. Completar a revisão OpenAPI e de schema/respostas, incluindo histórico, limites de paginação, propriedade, falhas e replay.
-**Critério de conclusão:** política para resultado ambíguo registrada, concorrência e replay demonstrados por testes no banco de destino e contrato revisado. A etapa permanece em andamento até cumprir esses critérios.
+1. A política definida é bloquear novas tentativas após timeout/resultado externo ambíguo e exigir reconciliação manual; não adicionar retry cego. A reserva `PUBLISHING` é persistida antes da chamada externa e também bloqueia uma segunda chave para o mesmo draft.
+2. Oracle foi confirmado como banco-alvo de `prod`; preparar schema descartável e validar migrations, `ddl-auto=validate`, chamadas simultâneas com mesma chave e chaves diferentes. O lock pessimista e a unicidade precisam de demonstração no Oracle; teste com repositório simulado não substitui concorrência real.
+3. Completar a revisão OpenAPI e de schema/respostas, incluindo histórico, limites de paginação, propriedade, `OUTCOME_UNKNOWN`, falhas e replay.
+**Critério de conclusão:** política para resultado ambíguo registrada e implementada, concorrência e replay demonstrados por testes Oracle e contrato revisado. A etapa permanece em andamento até cumprir esses critérios.
 
 ### Passo 11 — Adicionar oportunidades locais sem scraping
 **Objetivo:** apoiar busca de vagas sem automatizar o LinkedIn.

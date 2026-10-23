@@ -6,7 +6,7 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-🚧 **Passo 10 — rascunhos e publicação textual** em andamento. OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação e publicação idempotente via Posts API, além de histórico paginado por usuário. Falhas conhecidas são registradas e não são repetidas automaticamente; concorrência em banco real ainda precisa de validação. O perfil `prod` está configurado para Oracle, sem validação documentada contra Oracle de teste. Veja [`docs/status-atual.md`](docs/status-atual.md).
+🚧 **Passo 10 — rascunhos e publicação textual** em andamento. OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação, publicação idempotente via Posts API e histórico paginado por usuário. Reservas são persistidas antes da chamada externa; resultados ambíguos bloqueiam novas tentativas até reconciliação manual. A concorrência ainda precisa de validação em Oracle de teste. Veja [`docs/status-atual.md`](docs/status-atual.md).
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) e o roteiro, incluindo os próximos passos, em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
@@ -42,12 +42,12 @@ Para o **estado funcional e as pendências atuais**, prevalece [`docs/status-atu
 
 Essas funcionalidades são expostas pelos endpoints listados abaixo e cobertas por testes automatizados. O fluxo OAuth foi validado contra o app real no Developer Portal; o provedor continua sendo simulado na suíte automatizada.
 
-### Planejado, ainda não implementado
+### Em andamento / planejado
 
-- Histórico paginado de publicações e uma política testada para falhas e concorrência na publicação idempotente.
+- Validação em Oracle de teste das migrations, do schema e da concorrência; a configuração atual não comprova compatibilidade operacional.
 - Registro e organização local de oportunidades de vaga.
 
-As tabelas ou migrations preliminares de oportunidades não significam que esse recurso esteja executável. Não há endpoint para consultar/publicar o histórico de publicações nem endpoints de oportunidades.
+As tabelas ou migrations preliminares de oportunidades não significam que esse recurso esteja executável. O histórico de publicações tem endpoint paginado; não há endpoints de oportunidades.
 
 ### Fora do escopo
 
@@ -83,9 +83,9 @@ Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem 
 
 ## Próximos passos
 
-1. Concluir a confiabilidade do Passo 10: validar concorrência em banco real e definir explicitamente a recuperação segura após resultado externo ambíguo.
-2. Executar validação do perfil `prod` em Oracle de teste descartável e confirmar JDK 21, Redis e configuração do IP atrás do proxy antes de exposição pública. A presença de dependências PostgreSQL no Maven não significa que PostgreSQL seja o banco configurado no perfil `prod`.
-4. Depois de fechar esse escopo, priorizar oportunidades locais e completar documentação OpenAPI, testes e hardening conforme [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md).
+1. Concluir o Passo 10: validar concorrência, migrations e schema em Oracle descartável e revisar o contrato OpenAPI. Resultado ambíguo já bloqueia novos envios até reconciliação manual.
+2. Confirmar JDK 21, Redis e configuração do IP atrás do proxy antes de exposição pública. A presença de dependências PostgreSQL no Maven não significa que PostgreSQL seja o banco configurado no perfil `prod`.
+3. Depois de fechar o Passo 10, confirmar prioridade e escopo de oportunidades locais para iniciar o Passo 11.
 
 ## Arquitetura
 
@@ -191,7 +191,7 @@ O callback está configurado como `http://localhost:8080/api/v1/linkedin/oauth/c
 
 - Oportunidades ainda não têm endpoints funcionais.
 - Não há refresh token presumido — depende do que o LinkedIn efetivamente conceder para o app registrado.
-- Falhas conhecidas são registradas como `FAILED`; repetição da mesma chave após falha não republica automaticamente e retorna conflito. A recuperação e os resultados externos ambíguos ainda precisam de uma política validada.
+- Falhas conhecidas são registradas como `FAILED`; resultados ambíguos ficam em `OUTCOME_UNKNOWN` ou permanecem `PUBLISHING` após interrupção. Ambos bloqueiam novo envio até reconciliação manual; não existe retry automático nem endpoint de reconciliação.
 - O perfil `prod` está configurado para Oracle, mas sua migration/schema não têm teste de integração Oracle no repositório.
 
 ## Contribuindo
