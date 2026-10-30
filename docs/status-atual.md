@@ -1,8 +1,8 @@
 # Status atual do projeto
 
 **Atualizado em:** 30/10/2026
-**Etapa atual:** Passo 10 em andamento — reserva durável, bloqueio de resultados ambíguos e contrato OpenAPI de publicação/histórico implementados; validação Oracle e rotina de reconciliação manual pendentes
-**Referências:** [`docs/progress/STEP-10.md`](progress/STEP-10.md) e o [plano da próxima release](planejamento-tecnico.md#plano-proposto-para-a-próxima-release)
+**Etapa atual:** Passo 10 em andamento — reserva durável, bloqueio de resultados ambíguos, contrato OpenAPI de publicação/histórico e procedimento de reconciliação manual implementados; validação Oracle pendente
+**Referências:** [`docs/progress/STEP-10.md`](progress/STEP-10.md), [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md) e o [plano da próxima release](planejamento-tecnico.md#plano-proposto-para-a-próxima-release)
 
 Este documento consolida o estado vigente observado no código e na configuração do projeto. Os relatórios em `docs/progress/` registram decisões e validações do momento em que foram escritos; não são a fonte para pendências atuais.
 
@@ -21,15 +21,15 @@ Este documento consolida o estado vigente observado no código e na configuraç�
 - A reserva `PUBLISHING` é confirmada em transação antes da chamada ao LinkedIn. Ela continua bloqueando tentativas se o processo cair antes de finalizar.
 - Falha de transporte, respostas HTTP 408/409/5xx ou resposta de sucesso sem `x-restli-id` são tratadas como `OUTCOME_UNKNOWN`; a mesma chave e novas chaves para o mesmo draft são bloqueadas até reconciliação manual.
 - A reserva usa lock pessimista no draft para impedir que chaves diferentes iniciem publicação concorrente do mesmo draft.
-- Testes HTTP cobrem isolamento e paginação do histórico, falha persistida e replay impedido. O teste de colisão usa repositório simulado; concorrência no banco real continua sem validação.
+- Testes HTTP cobrem isolamento e paginação do histórico, falha persistida, reserva `PUBLISHING` interrompida, reconciliação manual (tanto para `PUBLISHED` quanto para `FAILED`/`RECONCILED_NOT_PUBLISHED`, com trilha em `audit_event`) e replay impedido. O teste de colisão usa repositório simulado; concorrência no banco real continua sem validação.
 - O OpenAPI local documenta o contrato completo de `POST /api/v1/drafts/{id}/publish` e `GET /api/v1/publications`: header `Idempotency-Key` obrigatório (1–200 caracteres), replay `201`, schema `ApiError` com exemplo para cada código emitido (`400`, `404`, `409` `PUBLICATION_ALREADY_PROCESSED`/`PUBLICATION_OUTCOME_UNKNOWN`, `422`, `429`, `502` `LINKEDIN_RESULT_UNKNOWN`/falha conhecida, `503`), respostas `401`/`403` sem corpo e enumeração dos estados `PUBLISHING`, `PUBLISHED`, `FAILED` e `OUTCOME_UNKNOWN`. Um teste de contrato verifica esses elementos no `/api-docs`.
 
 ## Limites funcionais atuais
 
 - Apenas drafts textuais são aceitos; mídia e artigos são rejeitados.
 - Não há endpoints de oportunidades.
-- Falha conhecida do LinkedIn é registrada como `FAILED`. A mesma chave após falha retorna conflito; não há retry automático. Resultado externo ambíguo é salvo como `OUTCOME_UNKNOWN` e bloqueia qualquer nova chave para o draft. A reconciliação é manual; não há endpoint administrativo.
-- Um registro `PUBLISHING` remanescente pode indicar chamada em curso ou interrupção do processo; novas tentativas são bloqueadas e é necessário reconciliar no LinkedIn antes de qualquer reenvio.
+- Falha conhecida do LinkedIn é registrada como `FAILED`. A mesma chave após falha retorna conflito; não há retry automático. Resultado externo ambíguo é salvo como `OUTCOME_UNKNOWN` e bloqueia qualquer nova chave para o draft. A reconciliação é manual (ver [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md)); não há endpoint administrativo.
+- Um registro `PUBLISHING` remanescente pode indicar chamada em curso ou interrupção do processo; novas tentativas são bloqueadas e é necessário seguir o [procedimento de reconciliação manual](reconciliacao-manual-publicacoes.md) após conferir o perfil no LinkedIn antes de qualquer reenvio.
 - A publicação é feita pelo fluxo de `POST /api/v1/drafts/{id}/publish`; não existe endpoint autônomo de publicações.
 - O OpenAPI local tem o contrato de publicação e histórico revisado; os demais endpoints (auth, OAuth e drafts) ainda precisam da mesma revisão de schemas e erros como parte do Passo 12.
 - A validação tardia de `TOKEN_ENCRYPTION_KEY` é intencional no perfil local para permitir iniciar a aplicação antes de configurar OAuth; inicie o fluxo somente após configurar a chave Base64 válida de 32 bytes. Logs e respostas não devem revelar o valor.
@@ -37,7 +37,7 @@ Este documento consolida o estado vigente observado no código e na configuraç�
 ## Pendências e lacunas confirmadas
 
 1. Executar testes de concorrência com a mesma chave e chaves diferentes, além de migrations e validação Hibernate, em Oracle descartável. Oracle foi confirmado como alvo, mas não há serviço ou teste Oracle no repositório atual.
-2. Documentar uma rotina operacional segura de reconciliação manual para registros `PUBLISHING` e `OUTCOME_UNKNOWN`, sem retry automático. O contrato OpenAPI de publicação e histórico (schemas e respostas para `OUTCOME_UNKNOWN`, conflito e replay) foi concluído em 30/10/2026.
+2. Completar a revisão OpenAPI dos demais endpoints (auth, OAuth e rascunhos) como parte do Passo 12. O contrato OpenAPI de publicação e histórico e o procedimento operacional de reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md)) foram concluídos em 30/10/2026.
 3. Revalidar a versão e o payload da Posts API em documentação oficial; a matriz registra verificação em 22/09/2026 e a configuração atual usa `Linkedin-Version: 202609`.
 4. Validar com JDK 21 no ambiente-alvo e, antes de exposição pública, validar Redis compartilhado e o tratamento de IP de origem atrás do proxy confiável.
 5. Definir e implementar o escopo local de oportunidades, se continuar desejado, depois do fechamento do fluxo de publicação.
@@ -48,7 +48,7 @@ Os itens 1–4 são trabalho de confiabilidade/validação e não devem ser desc
 
 **Objetivo de release proposto:** tornar o fluxo de publicação textual observável e confiável, sem ampliar para mídia ou oportunidades. Este recorte é uma proposta baseada nas lacunas imediatas do código, não uma decisão confirmada de produto.
 
-1. **Fechar o contrato de idempotência e falhas.** A política implementada bloqueia reenvio após resultado ambíguo e exige reconciliação manual; validar sucesso, replay, falha conhecida e reserva `PUBLISHING` interrompida.
+1. **Fechar o contrato de idempotência e falhas.** Concluído em SQLite/MockMvc em 30/10/2026: política implementada e testada para sucesso, replay, falha conhecida, resultado ambíguo (`OUTCOME_UNKNOWN`), reserva `PUBLISHING` interrompida e reconciliação manual documentada em [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md). Resta a validação equivalente em Oracle (itens 2 e 3).
 2. **Validar o banco suportado.** Oracle é o destino confirmado para `prod`; executar migrations, validação Hibernate e operações de publicação em schema descartável. As dependências PostgreSQL não significam suporte PostgreSQL.
 3. **Demonstrar concorrência e persistência.** Criar testes concorrentes para a mesma chave e chaves diferentes em Oracle; verificar lock pessimista, unicidade e estados parciais.
 4. **Completar o contrato do histórico.** Concluído no OpenAPI em 30/10/2026: schemas, exemplos, `OUTCOME_UNKNOWN` e `draftId` nulo após remoção do draft estão documentados e cobertos por teste de contrato.

@@ -53,7 +53,7 @@ The repository documentation describes the following capabilities as implemented
 The current project status documentation also identifies material items that must remain open until verified:
 
 1. Concurrency with the same idempotency key has not been validated against a real supported database; the known collision test uses a simulated repository.
-2. There is no implemented reconciliation strategy for an ambiguous external result, such as a timeout after LinkedIn may have accepted a post.
+2. There is no automated or admin-endpoint reconciliation for an ambiguous external result (such as a timeout after LinkedIn may have accepted a post); recovery relies on the manual operator runbook in [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md), which must be reviewed as part of `PUB-05`.
 3. The production Oracle profile and its migrations have not been validated against a disposable real Oracle test database. The Maven build also contains PostgreSQL dependencies, so the intended supported production database must be made explicit and verified.
 4. The OAuth provider is simulated in automated tests, even though the project status records a smoke test with the real app in LinkedIn Developer Portal.
 5. The LinkedIn Posts API version and payload require revalidation against official documentation before release.

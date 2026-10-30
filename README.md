@@ -83,7 +83,7 @@ Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem 
 
 ## Próximos passos
 
-1. Concluir o Passo 10: validar concorrência, migrations e schema em Oracle descartável e documentar a rotina de reconciliação manual. O contrato OpenAPI de publicação e histórico já está revisado; resultado ambíguo já bloqueia novos envios até reconciliação manual.
+1. Concluir o Passo 10: validar concorrência, migrations e schema em Oracle descartável (única pendência restante da etapa). O contrato OpenAPI de publicação/histórico já está revisado e a rotina de reconciliação manual está documentada em [`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md).
 2. Confirmar JDK 21, Redis e configuração do IP atrás do proxy antes de exposição pública. A presença de dependências PostgreSQL no Maven não significa que PostgreSQL seja o banco configurado no perfil `prod`.
 3. Depois de fechar o Passo 10, confirmar prioridade e escopo de oportunidades locais para iniciar o Passo 11.
 
@@ -191,7 +191,7 @@ O callback está configurado como `http://localhost:8080/api/v1/linkedin/oauth/c
 
 - Oportunidades ainda não têm endpoints funcionais.
 - Não há refresh token presumido — depende do que o LinkedIn efetivamente conceder para o app registrado.
-- Falhas conhecidas são registradas como `FAILED`; resultados ambíguos ficam em `OUTCOME_UNKNOWN` ou permanecem `PUBLISHING` após interrupção. Ambos bloqueiam novo envio até reconciliação manual; não existe retry automático nem endpoint de reconciliação.
+- Falhas conhecidas são registradas como `FAILED`; resultados ambíguos ficam em `OUTCOME_UNKNOWN` ou permanecem `PUBLISHING` após interrupção. Ambos bloqueiam novo envio até reconciliação manual conforme [`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md); não existe retry automático nem endpoint de reconciliação.
 - O perfil `prod` está configurado para Oracle, mas sua migration/schema não têm teste de integração Oracle no repositório.
 
 ## Contribuindo

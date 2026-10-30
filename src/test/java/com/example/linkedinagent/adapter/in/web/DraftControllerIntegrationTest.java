@@ -1,5 +1,6 @@
 package com.example.linkedinagent.adapter.in.web;
 
+import com.example.linkedinagent.adapter.out.persistence.repository.AuditEventRepository;
 import com.example.linkedinagent.application.ports.out.LinkedInAuthorizationPort;
 import com.example.linkedinagent.application.ports.out.LinkedInPublishingPort;
 import com.example.linkedinagent.application.ports.out.TokenCipherPort;
@@ -12,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -22,6 +24,9 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.times;
@@ -43,6 +48,12 @@ class DraftControllerIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private AuditEventRepository auditEventRepository;
 
     @MockitoBean
     private RateLimitStore rateLimitStore;
@@ -282,6 +293,169 @@ class DraftControllerIntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PUBLICATION_OUTCOME_UNKNOWN"));
         verify(publishingPort, times(1)).publish(any(), any());
+    }
+
+    @Test
+    void manualReconciliationAsPublishedAllowsIdempotentReplayAndPreventsDuplicatePost() throws Exception {
+        MockHttpSession session = loginAndRegister();
+        UUID draftId = createDraft(session);
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", draftId)
+                        .session(session).with(csrf()))
+                .andExpect(status().isOk());
+        when(publishingPort.publish(any(), any()))
+                .thenThrow(new LinkedInPublishingException("LINKEDIN_PROVIDER_UNAVAILABLE", "read timeout", true));
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "reconcile-published-key"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value("LINKEDIN_RESULT_UNKNOWN"));
+
+        var row = jdbcTemplate.queryForMap(
+                "SELECT id, app_user_id FROM publication WHERE draft_id = ? AND status = 'OUTCOME_UNKNOWN'",
+                draftId.toString());
+        String publicationId = row.get("id").toString();
+        String appUserId = row.get("app_user_id").toString();
+        UUID auditId = UUID.randomUUID();
+
+        // Executa o procedimento manual do Cenário A (post confirmado no perfil do LinkedIn).
+        int updatedPublications = jdbcTemplate.update("""
+                UPDATE publication
+                   SET status = 'PUBLISHED',
+                       failure_code = NULL,
+                       external_post_id = ?,
+                       published_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE id = ?
+                   AND app_user_id = ?
+                   AND status IN ('PUBLISHING', 'OUTCOME_UNKNOWN')
+                """, "urn:li:share:reconciled-post-1", publicationId, appUserId);
+        int updatedDrafts = jdbcTemplate.update("""
+                UPDATE content_draft
+                   SET status = 'PUBLISHED',
+                       updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE id = ?
+                   AND app_user_id = ?
+                   AND status = 'APPROVED'
+                """, draftId.toString(), appUserId);
+        jdbcTemplate.update("""
+                INSERT INTO audit_event (
+                    id, app_user_id, event_type, resource_type, resource_id,
+                    outcome, occurred_at, metadata_sanitized
+                ) VALUES (
+                    ?, ?, 'PUBLICATION_MANUAL_RECONCILIATION', 'PUBLICATION', ?,
+                    'MARKED_PUBLISHED', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ?
+                )
+                """, auditId.toString(), appUserId, publicationId,
+                "{\"draftId\":\"%s\",\"previousStatus\":\"OUTCOME_UNKNOWN\",\"reconciledStatus\":\"PUBLISHED\",\"verification\":\"linkedin_profile_activity\"}"
+                        .formatted(draftId));
+        assertThat(updatedPublications).isEqualTo(1);
+        assertThat(updatedDrafts).isEqualTo(1);
+
+        // Replay com a mesma chave devolve o registro reconciliado (201) sem nova chamada ao LinkedIn.
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "reconcile-published-key"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(publicationId))
+                .andExpect(jsonPath("$.status").value("PUBLISHED"))
+                .andExpect(jsonPath("$.externalPostId").value("urn:li:share:reconciled-post-1"))
+                .andExpect(jsonPath("$.failureCode").value(nullValue()));
+
+        // Chave diferente não pode publicar novamente porque o draft já está PUBLISHED.
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "another-key-after-published"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("DRAFT_NOT_APPROVED"));
+
+        mockMvc.perform(get("/api/v1/publications").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].status").value("PUBLISHED"))
+                .andExpect(jsonPath("$.content[0].failureCode").value(nullValue()))
+                .andExpect(jsonPath("$.content[0].publishedAt").isNotEmpty());
+
+        var auditEvent = auditEventRepository.findById(auditId).orElseThrow();
+        assertThat(auditEvent.getOutcome()).isEqualTo("MARKED_PUBLISHED");
+        assertThat(auditEvent.getOccurredAt()).isNotNull();
+        verify(publishingPort, times(1)).publish(any(), any());
+    }
+
+    @Test
+    void manualReconciliationAsNotPublishedKeepsOldKeyBlockedAndAllowsFreshIdempotencyKey() throws Exception {
+        MockHttpSession session = loginAndRegister();
+        UUID draftId = createDraft(session);
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", draftId)
+                        .session(session).with(csrf()))
+                .andExpect(status().isOk());
+        when(publishingPort.publish(any(), any()))
+                .thenThrow(new IllegalStateException("simulated process interruption"))
+                .thenReturn(new PublicationResult("urn:li:share:published-with-fresh-key"));
+
+        assertThatThrownBy(() -> mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                .session(session).with(csrf()).header("Idempotency-Key", "interrupted-key")))
+                .hasRootCauseInstanceOf(IllegalStateException.class);
+
+        // A reserva PUBLISHING sobrevive em transação própria e bloqueia tanto a mesma chave quanto chaves novas.
+        mockMvc.perform(get("/api/v1/publications").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].status").value("PUBLISHING"));
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "interrupted-key"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PUBLICATION_ALREADY_PROCESSED"));
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "premature-new-key"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PUBLICATION_OUTCOME_UNKNOWN"));
+
+        var row = jdbcTemplate.queryForMap(
+                "SELECT id, app_user_id FROM publication WHERE draft_id = ? AND status = 'PUBLISHING'",
+                draftId.toString());
+        String publicationId = row.get("id").toString();
+        String appUserId = row.get("app_user_id").toString();
+        UUID auditId = UUID.randomUUID();
+
+        // Executa o procedimento manual do Cenário B (ausência confirmada no perfil do LinkedIn).
+        int updatedPublications = jdbcTemplate.update("""
+                UPDATE publication
+                   SET status = 'FAILED',
+                       failure_code = 'RECONCILED_NOT_PUBLISHED',
+                       external_post_id = NULL,
+                       published_at = NULL
+                 WHERE id = ?
+                   AND app_user_id = ?
+                   AND status IN ('PUBLISHING', 'OUTCOME_UNKNOWN')
+                """, publicationId, appUserId);
+        jdbcTemplate.update("""
+                INSERT INTO audit_event (
+                    id, app_user_id, event_type, resource_type, resource_id,
+                    outcome, occurred_at, metadata_sanitized
+                ) VALUES (
+                    ?, ?, 'PUBLICATION_MANUAL_RECONCILIATION', 'PUBLICATION', ?,
+                    'MARKED_NOT_PUBLISHED', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ?
+                )
+                """, auditId.toString(), appUserId, publicationId,
+                "{\"draftId\":\"%s\",\"previousStatus\":\"PUBLISHING\",\"reconciledStatus\":\"FAILED\",\"failureCode\":\"RECONCILED_NOT_PUBLISHED\",\"verification\":\"linkedin_profile_activity\"}"
+                        .formatted(draftId));
+        assertThat(updatedPublications).isEqualTo(1);
+
+        // A chave antiga continua bloqueada; o envio só ocorre quando o usuário envia explicitamente uma chave nova.
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "interrupted-key"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PUBLICATION_ALREADY_PROCESSED"));
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "fresh-key-after-reconciliation"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("PUBLISHED"))
+                .andExpect(jsonPath("$.externalPostId").value("urn:li:share:published-with-fresh-key"));
+
+        mockMvc.perform(get("/api/v1/publications").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2));
+
+        var auditEvent = auditEventRepository.findById(auditId).orElseThrow();
+        assertThat(auditEvent.getOutcome()).isEqualTo("MARKED_NOT_PUBLISHED");
+        assertThat(auditEvent.getOccurredAt()).isNotNull();
+        verify(publishingPort, times(2)).publish(any(), any());
     }
 
     @Test

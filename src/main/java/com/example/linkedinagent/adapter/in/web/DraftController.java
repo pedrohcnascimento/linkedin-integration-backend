@@ -385,17 +385,17 @@ public class DraftController {
             UUID id,
             @Schema(description = "UUID do draft publicado; nulo se o draft associado tiver sido removido.", nullable = true)
             UUID draftId,
-            @Schema(description = "Identificador retornado pelo LinkedIn no header x-restli-id; presente somente em PUBLISHED.",
+            @Schema(description = "Identificador retornado pelo LinkedIn no header x-restli-id (ou registrado na reconciliação manual, quando disponível); presente somente em PUBLISHED.",
                     nullable = true, example = "urn:li:share:7000000000000000000")
             String externalPostId,
             @Schema(description = """
                     PUBLISHING: reserva gravada antes da chamada ao LinkedIn (em curso ou interrompida; bloqueia novas tentativas). \
                     PUBLISHED: LinkedIn confirmou o post. \
-                    FAILED: falha conhecida do LinkedIn; a mesma chave não é reenviada. \
+                    FAILED: falha conhecida do LinkedIn ou tentativa encerrada por reconciliação manual; a mesma chave não é reenviada. \
                     OUTCOME_UNKNOWN: o LinkedIn pode ter aceitado o post; exige reconciliação manual antes de qualquer reenvio.""",
                     allowableValues = {"PUBLISHING", "PUBLISHED", "FAILED", "OUTCOME_UNKNOWN"}, example = "PUBLISHED")
             String status,
-            @Schema(description = "Código interno da falha (LINKEDIN_* ou LINKEDIN_RESULT_UNKNOWN); nulo em PUBLISHING e PUBLISHED.",
+            @Schema(description = "Código interno da falha (LINKEDIN_*, LINKEDIN_RESULT_UNKNOWN ou RECONCILED_NOT_PUBLISHED); nulo em PUBLISHING e PUBLISHED.",
                     nullable = true, example = "LINKEDIN_RESULT_UNKNOWN")
             String failureCode,
             @Schema(description = "Instante da confirmação de publicação; nulo fora de PUBLISHED.", nullable = true)
