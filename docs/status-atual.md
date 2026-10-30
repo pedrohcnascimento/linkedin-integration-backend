@@ -1,8 +1,8 @@
 # Status atual do projeto
 
 **Atualizado em:** 30/10/2026
-**Etapa atual:** Passo 10 em andamento — reserva durável, bloqueio de resultados ambíguos, contrato OpenAPI de publicação/histórico e procedimento de reconciliação manual implementados; validação Oracle pendente
-**Referências:** [`docs/progress/STEP-10.md`](progress/STEP-10.md), [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md) e o [plano da próxima release](planejamento-tecnico.md#plano-proposto-para-a-próxima-release)
+**Etapa atual:** Passo 12 em andamento (entrega 1) — Passo 11 adiado para ciclo posterior; contrato OpenAPI de autenticação/sessão/logout e publicação/histórico concluído; falta revisar OAuth e CRUD/aprovação de drafts (entrega 2), além da validação Oracle do Passo 10
+**Referências:** [`docs/progress/STEP-12.md`](progress/STEP-12.md), [`docs/progress/STEP-11.md`](progress/STEP-11.md), [`docs/progress/STEP-10.md`](progress/STEP-10.md), [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md) e o [plano da próxima release](planejamento-tecnico.md#plano-proposto-para-a-próxima-release)
 
 Este documento consolida o estado vigente observado no código e na configuração do projeto. Os relatórios em `docs/progress/` registram decisões e validações do momento em que foram escritos; não são a fonte para pendências atuais.
 
@@ -22,25 +22,25 @@ Este documento consolida o estado vigente observado no código e na configuraç�
 - Falha de transporte, respostas HTTP 408/409/5xx ou resposta de sucesso sem `x-restli-id` são tratadas como `OUTCOME_UNKNOWN`; a mesma chave e novas chaves para o mesmo draft são bloqueadas até reconciliação manual.
 - A reserva usa lock pessimista no draft para impedir que chaves diferentes iniciem publicação concorrente do mesmo draft.
 - Testes HTTP cobrem isolamento e paginação do histórico, falha persistida, reserva `PUBLISHING` interrompida, reconciliação manual (tanto para `PUBLISHED` quanto para `FAILED`/`RECONCILED_NOT_PUBLISHED`, com trilha em `audit_event`) e replay impedido. O teste de colisão usa repositório simulado; concorrência no banco real continua sem validação.
-- O OpenAPI local documenta o contrato completo de `POST /api/v1/drafts/{id}/publish` e `GET /api/v1/publications`: header `Idempotency-Key` obrigatório (1–200 caracteres), replay `201`, schema `ApiError` com exemplo para cada código emitido (`400`, `404`, `409` `PUBLICATION_ALREADY_PROCESSED`/`PUBLICATION_OUTCOME_UNKNOWN`, `422`, `429`, `502` `LINKEDIN_RESULT_UNKNOWN`/falha conhecida, `503`), respostas `401`/`403` sem corpo e enumeração dos estados `PUBLISHING`, `PUBLISHED`, `FAILED` e `OUTCOME_UNKNOWN`. Um teste de contrato verifica esses elementos no `/api-docs`.
+- O OpenAPI local documenta o contrato completo de `POST /api/v1/drafts/{id}/publish`, `GET /api/v1/publications` e da fatia de autenticação/sessão (`GET /api/v1/auth/csrf`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `POST /api/v1/auth/logout` via `OpenApiConfig`, `GET /api/v1/users/me`), usando um único record `ApiError` compartilhado e mantendo `/api-docs` e `/swagger-ui/**` explicitamente desativados no perfil `prod`. Testes de contrato verificam esses elementos.
 
 ## Limites funcionais atuais
 
 - Apenas drafts textuais são aceitos; mídia e artigos são rejeitados.
-- Não há endpoints de oportunidades.
+- Não há endpoints de oportunidades; o Passo 11 foi formalmente adiado para implementação posterior à estabilização da v1 (ver [`docs/progress/STEP-11.md`](progress/STEP-11.md)).
 - Falha conhecida do LinkedIn é registrada como `FAILED`. A mesma chave após falha retorna conflito; não há retry automático. Resultado externo ambíguo é salvo como `OUTCOME_UNKNOWN` e bloqueia qualquer nova chave para o draft. A reconciliação é manual (ver [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md)); não há endpoint administrativo.
 - Um registro `PUBLISHING` remanescente pode indicar chamada em curso ou interrupção do processo; novas tentativas são bloqueadas e é necessário seguir o [procedimento de reconciliação manual](reconciliacao-manual-publicacoes.md) após conferir o perfil no LinkedIn antes de qualquer reenvio.
 - A publicação é feita pelo fluxo de `POST /api/v1/drafts/{id}/publish`; não existe endpoint autônomo de publicações.
-- O OpenAPI local tem o contrato de publicação e histórico revisado; os demais endpoints (auth, OAuth e drafts) ainda precisam da mesma revisão de schemas e erros como parte do Passo 12.
+- O OpenAPI local já tem os contratos de autenticação/sessão/logout, publicação e histórico revisados; os endpoints de `LinkedInOAuthController` e os demais endpoints de `DraftController` (criação, listagem, edição e aprovação) serão concluídos na Entrega 2 do Passo 12.
 - A validação tardia de `TOKEN_ENCRYPTION_KEY` é intencional no perfil local para permitir iniciar a aplicação antes de configurar OAuth; inicie o fluxo somente após configurar a chave Base64 válida de 32 bytes. Logs e respostas não devem revelar o valor.
 
 ## Pendências e lacunas confirmadas
 
 1. Executar testes de concorrência com a mesma chave e chaves diferentes, além de migrations e validação Hibernate, em Oracle descartável. Oracle foi confirmado como alvo, mas não há serviço ou teste Oracle no repositório atual.
-2. Completar a revisão OpenAPI dos demais endpoints (auth, OAuth e rascunhos) como parte do Passo 12. O contrato OpenAPI de publicação e histórico e o procedimento operacional de reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md)) foram concluídos em 30/10/2026.
+2. Concluir a Entrega 2 do Passo 12: completar schemas, headers e exemplos OpenAPI em `LinkedInOAuthController` e nos endpoints de criação/listagem/edição/aprovação de `DraftController`, além de teste de paridade de rotas (ver [`docs/progress/STEP-12.md`](progress/STEP-12.md)). A Entrega 1 (autenticação/sessão/logout, unificação de `ApiError`, rate limit de publicação no `WebConfig` e desativação raiz do `springdoc` em `prod`) e o procedimento de reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md)) foram concluídos em 30/10/2026.
 3. Revalidar a versão e o payload da Posts API em documentação oficial; a matriz registra verificação em 22/09/2026 e a configuração atual usa `Linkedin-Version: 202609`.
 4. Validar com JDK 21 no ambiente-alvo e, antes de exposição pública, validar Redis compartilhado e o tratamento de IP de origem atrás do proxy confiável.
-5. Definir e implementar o escopo local de oportunidades, se continuar desejado, depois do fechamento do fluxo de publicação.
+5. **Adiado para ciclo posterior (Passo 11):** oportunidades locais e integração com fontes externas autorizadas de vagas não serão feitas neste momento e ficam pós-estabilização da release atual (ver [`docs/progress/STEP-11.md`](progress/STEP-11.md) e [`docs/planejamento-fontes-vagas.md`](planejamento-fontes-vagas.md)).
 
 Os itens 1–4 são trabalho de confiabilidade/validação e não devem ser descritos como concluídos. O item 5 depende de priorização de produto. A existência de entidades ou tabelas preliminares não significa que oportunidades estejam disponíveis.
 

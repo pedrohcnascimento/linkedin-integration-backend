@@ -10,12 +10,13 @@ server:
         secure: true
         same-site: lax
 
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 spring:
-  springdoc:
-    api-docs:
-      enabled: false
-    swagger-ui:
-      enabled: false
   data:
     redis:
       url: ${RATE_LIMIT_REDIS_URL}

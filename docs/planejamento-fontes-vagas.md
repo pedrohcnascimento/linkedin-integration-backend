@@ -1,7 +1,7 @@
 # Planejamento — integração de fontes externas de vagas
 
-**Status:** planejamento de produto; ainda não implementado.  
-**Escopo mínimo desejado:** concluir a Fase 1 e avaliar/concluir a Fase 2. A Fase 3 é opcional e depende dos resultados, do orçamento e das condições de licenciamento.  
+**Status:** adiado para ciclo posterior (registrado em 30/10/2026 — ver [`progress/STEP-11.md`](progress/STEP-11.md)); ainda não implementado.  
+**Escopo mínimo desejado quando retomado:** concluir a Fase 1 e avaliar/concluir a Fase 2. A Fase 3 é opcional e depende dos resultados, do orçamento e das condições de licenciamento.  
 **Objetivo:** ampliar a descoberta de oportunidades por meio de APIs autorizadas, comparando cobertura, relevância e custo.
 
 > Preços, franquias e termos podem mudar. Revalidar as páginas oficiais antes de implementar ou contratar. Este documento registra uma direção de produto, não comprova integrações já existentes.
@@ -149,6 +149,6 @@ Não presumir que conectar o LinkedIn concede acesso a currículo completo, hist
 - [LinkedIn User Agreement](https://www.linkedin.com/legal/user-agreement)
 - [Termos de API do LinkedIn](https://developer.linkedin.com/legal)
 
-## 8. Próxima ação
+## 8. Próxima ação (quando a etapa for retomada)
 
-Primeiro, concluir o trabalho de confiabilidade já em andamento no fluxo de publicação. Em seguida, iniciar a Fase 1 com uma lista inicial de quadros Greenhouse/Lever relevantes e consultas de teste documentadas. Tratar a Fase 2 como experimento medido; manter a Fase 3 opcional até haver evidência de ganho de cobertura que justifique o custo e os termos do fornecedor.
+O Passo 11 não pode ser executado neste momento e permanece formalmente adiado até a conclusão do contrato da API (Passo 12), testes e estabilização de release do fluxo de publicação textual (ver [`progress/STEP-11.md`](progress/STEP-11.md) e [`status-atual.md`](status-atual.md)). Quando retomado, iniciar a Fase 1 com uma lista inicial de quadros Greenhouse/Lever relevantes e consultas de teste documentadas; tratar a Fase 2 como experimento medido e manter a Fase 3 opcional até haver evidência de ganho de cobertura que justifique o custo e os termos do fornecedor.

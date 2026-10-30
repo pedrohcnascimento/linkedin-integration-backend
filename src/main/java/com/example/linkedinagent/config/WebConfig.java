@@ -81,6 +81,7 @@ public class WebConfig implements WebMvcConfigurer {
                         "/api/v1/auth/register",
                         "/api/v1/linkedin/oauth/start",
                         "/api/v1/linkedin/oauth/callback",
+                        "/api/v1/drafts/*/publish",
                         "/api/v1/publications",
                         "/api/v1/publications/**");
     }

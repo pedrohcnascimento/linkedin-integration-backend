@@ -114,6 +114,42 @@ class ApiDocumentationLocalProfileTest {
     }
 
     @Test
+    void openApiDocumentsTheAuthenticationSessionAndLogoutContract() throws Exception {
+        mockMvc.perform(get("/api-docs"))
+                .andExpect(status().isOk())
+                // CSRF
+                .andExpect(jsonPath("$.paths['/api/v1/auth/csrf'].get.responses['200'].content['application/json'].schema['$ref']",
+                        endsWith("/CsrfResponse")))
+                // Register
+                .andExpect(jsonPath("$.paths['/api/v1/auth/register'].post.responses['201'].content['application/json'].schema['$ref']",
+                        endsWith("/UserResponse")))
+                .andExpect(jsonPath("$.paths['/api/v1/auth/register'].post.responses['400'].content['application/json'].examples.INVALID_REQUEST").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/auth/register'].post.responses['400'].content['application/json'].examples.PASSWORD_TOO_LONG").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/auth/register'].post.responses['403']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/auth/register'].post.responses['409'].content['application/json'].examples.EMAIL_ALREADY_REGISTERED.value.code")
+                        .value("EMAIL_ALREADY_REGISTERED"))
+                .andExpect(jsonPath("$.paths['/api/v1/auth/register'].post.responses['429'].headers['Retry-After']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/auth/register'].post.responses['503'].content['application/json'].examples.RATE_LIMIT_UNAVAILABLE").exists())
+                // Login (UserResponse explícito em 200, sem schema genérico vazio)
+                .andExpect(jsonPath("$.paths['/api/v1/auth/login'].post.responses['200'].content['application/json'].schema['$ref']",
+                        endsWith("/UserResponse")))
+                .andExpect(jsonPath("$.paths['/api/v1/auth/login'].post.responses['401'].content['application/json'].examples.AUTHENTICATION_FAILED.value.code")
+                        .value("AUTHENTICATION_FAILED"))
+                .andExpect(jsonPath("$.paths['/api/v1/auth/login'].post.responses['429'].headers['Retry-After']").exists())
+                // Logout atendido pelo filtro do Spring Security e documentado via OpenApiCustomizer
+                .andExpect(jsonPath("$.paths['/api/v1/auth/logout'].post.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/auth/logout'].post.responses['403']").exists())
+                // Sessão atual
+                .andExpect(jsonPath("$.paths['/api/v1/users/me'].get.responses['200'].content['application/json'].schema['$ref']",
+                        endsWith("/UserResponse")))
+                .andExpect(jsonPath("$.paths['/api/v1/users/me'].get.responses['401']").exists())
+                // Schemas compartilhados e restrições de senha
+                .andExpect(jsonPath("$.components.schemas.RegisterRequest.properties.password.minLength").value(12))
+                .andExpect(jsonPath("$.components.schemas.RegisterRequest.properties.password.maxLength").value(72))
+                .andExpect(jsonPath("$.components.schemas.UserResponse.properties.password").doesNotExist());
+    }
+
+    @Test
     void healthEndpointReportsTheRunningApplication() throws Exception {
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk())

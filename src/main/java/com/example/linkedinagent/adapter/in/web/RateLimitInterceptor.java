@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.util.ServletRequestPathUtils;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -33,7 +34,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             HttpServletRequest request,
             HttpServletResponse response,
             Object handler) {
-        String path = request.getServletPath();
+        String path = applicationPath(request);
         String route = request.getMethod() + " " + path;
         IpPolicy policy = POLICIES.get(route);
         if (policy != null) {
@@ -62,6 +63,18 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             rateLimitService.check("publication-write", limits);
         }
         return true;
+    }
+
+    private String applicationPath(HttpServletRequest request) {
+        if (ServletRequestPathUtils.hasParsedRequestPath(request)) {
+            return ServletRequestPathUtils.getParsedRequestPath(request).pathWithinApplication().value();
+        }
+        String servletPath = request.getServletPath();
+        String pathInfo = request.getPathInfo();
+        if (pathInfo == null) {
+            return servletPath == null ? "" : servletPath;
+        }
+        return (servletPath == null ? "" : servletPath) + pathInfo;
     }
 
     private String clientAddress(HttpServletRequest request) {

@@ -6,7 +6,7 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-🚧 **Passo 10 — rascunhos e publicação textual** em andamento. OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação, publicação idempotente via Posts API e histórico paginado por usuário. Reservas são persistidas antes da chamada externa; resultados ambíguos bloqueiam novas tentativas até reconciliação manual. A concorrência ainda precisa de validação em Oracle de teste. Veja [`docs/status-atual.md`](docs/status-atual.md).
+🚧 **Passo 12 — API REST e contrato OpenAPI (entrega 1)** em andamento; **Passo 11 (oportunidades/vagas)** formalmente adiado para ciclo posterior ([`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)). OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação, publicação idempotente via Posts API e histórico paginado por usuário. Reservas são persistidas antes da chamada externa; resultados ambíguos bloqueiam novas tentativas até reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md)). A validação de concorrência em Oracle descartável do Passo 10 permanece pendente de infraestrutura. Veja [`docs/status-atual.md`](docs/status-atual.md).
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) e o roteiro, incluindo os próximos passos, em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
@@ -36,7 +36,7 @@ Para o **estado funcional e as pendências atuais**, prevalece [`docs/status-atu
 - Cadastro de contas locais, login por sessão, consulta do usuário autenticado e logout.
 - Token CSRF para requisições que alteram estado.
 - Conexão LinkedIn via OAuth 2.0, consulta sanitizada do estado da conexão e desconexão local. Tokens são cifrados em repouso e não são devolvidos pela API.
-- Rate limiting para autenticação e endpoints OAuth.
+- Rate limiting para autenticação, OAuth e publicação de rascunhos.
 - Rascunhos textuais: criação, listagem paginada, edição antes da aprovação, aprovação e publicação autenticada com `Idempotency-Key`.
 - Adaptador da Posts API para publicação textual de membro; respostas externas não são devolvidas sem sanitização.
 
@@ -44,8 +44,9 @@ Essas funcionalidades são expostas pelos endpoints listados abaixo e cobertas p
 
 ### Em andamento / planejado
 
-- Validação em Oracle de teste das migrations, do schema e da concorrência; a configuração atual não comprova compatibilidade operacional.
-- Registro e organização local de oportunidades de vaga.
+- **Passo 12 (em andamento):** revisão final do contrato OpenAPI para `LinkedInOAuthController` e para criação/listagem/edição/aprovação em `DraftController` (Entrega 2); a fatia de autenticação/sessão/logout e publicação/histórico já está concluída.
+- **Passo 10 (pendência de infraestrutura):** validação em Oracle descartável das migrations, do schema e da concorrência; a configuração atual não comprova compatibilidade operacional.
+- **Passo 11 (adiado para ciclo posterior):** registro local de oportunidades e integração com fontes externas autorizadas de vagas não serão implementados neste momento (ver [`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)).
 
 As tabelas ou migrations preliminares de oportunidades não significam que esse recurso esteja executável. O histórico de publicações tem endpoint paginado; não há endpoints de oportunidades.
 
@@ -83,9 +84,9 @@ Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem 
 
 ## Próximos passos
 
-1. Concluir o Passo 10: validar concorrência, migrations e schema em Oracle descartável (única pendência restante da etapa). O contrato OpenAPI de publicação/histórico já está revisado e a rotina de reconciliação manual está documentada em [`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md).
-2. Confirmar JDK 21, Redis e configuração do IP atrás do proxy antes de exposição pública. A presença de dependências PostgreSQL no Maven não significa que PostgreSQL seja o banco configurado no perfil `prod`.
-3. Depois de fechar o Passo 10, confirmar prioridade e escopo de oportunidades locais para iniciar o Passo 11.
+1. Concluir a Entrega 2 do Passo 12: fechar schemas, headers e exemplos OpenAPI de `LinkedInOAuthController` e dos endpoints de criação/listagem/edição/aprovação de `DraftController`, com verificação automatizada de paridade de rotas (ver [`docs/progress/STEP-12.md`](docs/progress/STEP-12.md)).
+2. Validar concorrência, migrations e schema em Oracle descartável (pendência remanescente do Passo 10) assim que houver instância Oracle disponível, além de confirmar JDK 21, Redis e IP atrás do proxy antes de exposição pública.
+3. Somente em ciclo posterior à estabilização da v1, retomar o Passo 11 (oportunidades locais e fontes externas autorizadas de vagas — ver [`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)).
 
 ## Arquitetura
 

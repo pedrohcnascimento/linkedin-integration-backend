@@ -403,12 +403,4 @@ public class DraftController {
             @Schema(description = "Instante em que a tentativa foi reservada.")
             Instant createdAt) {
     }
-
-    @Schema(description = "Erro de negócio estável. Use code para decisões programáticas; message é apenas informativa.")
-    public record ApiError(
-            @Schema(description = "Código estável do erro.", example = "PUBLICATION_OUTCOME_UNKNOWN")
-            String code,
-            @Schema(description = "Mensagem informativa, sem detalhes do provedor externo.")
-            String message) {
-    }
 }

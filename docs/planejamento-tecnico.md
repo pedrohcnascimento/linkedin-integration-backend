@@ -450,11 +450,14 @@ O agente **não deve avançar automaticamente** quando um teste falhar, uma migr
 **Critério de conclusão:** política para resultado ambíguo registrada e implementada, concorrência e replay demonstrados por testes Oracle e contrato revisado. A etapa permanece em andamento até cumprir esses critérios.
 
 ### Passo 11 — Adicionar oportunidades locais sem scraping
-**Objetivo:** apoiar busca de vagas sem automatizar o LinkedIn.
-**Plano:** confirmar primeiro a prioridade do recurso; definir campos e ciclo de vida apenas para dados informados/importados de fontes autorizadas; criar casos de uso, migrations específicas para os bancos suportados, endpoints com isolamento por usuário e testes. Não implementar scraping, navegação automatizada ou candidatura.
+**Status:** **adiado para ciclo futuro** em 30/10/2026 (ver [`docs/progress/STEP-11.md`](progress/STEP-11.md) e [`docs/planejamento-fontes-vagas.md`](planejamento-fontes-vagas.md)). Não será implementado antes da finalização e estabilização da v1 de publicação textual; entidades/migrations preliminares de `opportunity` permanecem dormentes, sem endpoints expostos.
+**Objetivo (quando retomado):** apoiar busca e organização local de vagas sem automatizar o LinkedIn.
+**Plano:** definir campos e ciclo de vida apenas para dados informados/importados de fontes autorizadas; criar casos de uso, migrations específicas para os bancos suportados, endpoints com isolamento por usuário e testes. Não implementar scraping, navegação automatizada ou candidatura.
 
 ### Passo 12 — Finalizar a API REST e o contrato OpenAPI
-**Plano:** inventariar rotas existentes contra o contrato publicado; cobrir schemas, paginação, códigos de erro e exemplos de uso; verificar acesso local do Swagger e garantir que docs/OpenAPI permaneçam desabilitados em `prod`. A existência de anotações não substitui a revisão do contrato completo.
+**Status:** **em andamento (entrega 1 concluída em 30/10/2026)** — ver [`docs/progress/STEP-12.md`](progress/STEP-12.md).
+**Entregue na Entrega 1:** inventário completo das rotas implementadas frente ao contrato; correção do registro de `/api/v1/drafts/*/publish` no `RateLimitInterceptor` (`WebConfig`); correção da propriedade raiz `springdoc` no `application-prod.yml`; unificação do record `ApiError`; documentação de `POST /api/v1/auth/logout` via `OpenApiConfig`; e revisão completa de schemas/respostas/erros de `AuthController` (`/auth/csrf`, `/auth/register`, `/auth/login`, `/users/me`).
+**Plano restante (Entrega 2):** completar schemas, headers e exemplos de erro em `LinkedInOAuthController` e nos endpoints de criação/listagem/edição/aprovação de `DraftController`, além de verificação automatizada de paridade entre rotas `/api/v1/**` e `/api-docs`.
 
 ### Passo 13 — Completar testes automatizados
 **Plano:** separar cobertura unitária, HTTP/MockMvc e integração de banco; incluir falhas externas, resultado ambíguo, concorrência, isolamento, migrations e segurança. Executar build e suíte com JDK 21; manter serviços externos simulados, exceto smoke tests manuais autorizados.

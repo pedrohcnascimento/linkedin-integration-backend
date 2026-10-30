@@ -27,7 +27,4 @@ public class RateLimitExceptionHandler {
                 .header(HttpHeaders.RETRY_AFTER, Long.toString(STORE_RETRY_AFTER_SECONDS))
                 .body(new ApiError("RATE_LIMIT_UNAVAILABLE", "Requests are temporarily unavailable."));
     }
-
-    public record ApiError(String code, String message) {
-    }
 }

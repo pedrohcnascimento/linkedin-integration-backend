@@ -152,6 +152,38 @@ class RateLimitWebIntegrationTest {
     }
 
     @Test
+    void rateLimitsDraftPublicationRequests() throws Exception {
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", UUID.randomUUID())
+                        .with(user(testUser()))
+                        .with(csrf())
+                        .header("Idempotency-Key", "rate-limit-test-key"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "37"))
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"))
+                .andExpect(jsonPath("$.message").value("Too many requests. Please retry later."));
+    }
+
+    @Test
+    void rateLimitsDraftPublicationByAccountAndSessionAfterIpBudgetAllowsIt() throws Exception {
+        when(rateLimitStore.acquire(anyList())).thenAnswer(invocation -> {
+            List<RateLimitBucket> buckets = invocation.getArgument(0);
+            return buckets.stream().anyMatch(bucket ->
+                    bucket.dimension().equals("account") && bucket.scope().equals("publication-write"))
+                    ? Optional.of(Duration.ofSeconds(41))
+                    : Optional.empty();
+        });
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", UUID.randomUUID())
+                        .with(user(testUser()))
+                        .session(new MockHttpSession())
+                        .with(csrf())
+                        .header("Idempotency-Key", "rate-limit-account-key"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "41"))
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+    }
+
+    @Test
     void failsClosedWhenRateLimitStoreIsUnavailable() throws Exception {
         when(rateLimitStore.acquire(anyList()))
                 .thenThrow(new DataAccessResourceFailureException("Redis unavailable"));

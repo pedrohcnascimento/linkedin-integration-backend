@@ -159,7 +159,4 @@ public class LinkedInOAuthController {
             return new ConnectionResponse(false, "DISCONNECTED", null, null, null, null);
         }
     }
-
-    public record ApiError(String code, String message) {
-    }
 }
