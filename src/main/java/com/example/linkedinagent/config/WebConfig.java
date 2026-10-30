@@ -1,7 +1,7 @@
 package com.example.linkedinagent.config;
 
-import com.example.linkedinagent.adapter.in.web.RateLimitInterceptor;
-import com.example.linkedinagent.application.ratelimit.RateLimitService;
+import com.example.linkedinagent.security.RateLimitInterceptor;
+import com.example.linkedinagent.service.RateLimitService;
 import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.util.StringUtils;

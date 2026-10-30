@@ -9,8 +9,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * Ponto de entrada da aplicação.
  *
  * <p>Esta classe deve permanecer mínima: nenhuma lógica de negócio, de integração
- * com o LinkedIn ou de persistência deve residir aqui. Ver {@code docs/planejamento-tecnico.md},
- * seção 4, para os limites de cada camada da arquitetura hexagonal.</p>
+ * com o LinkedIn ou de persistência deve residir aqui. Consulte o {@code README.md}
+ * e {@code docs/planejamento-tecnico.md} para a organização em camadas DDD
+ * ({@code domain}, {@code dto}, {@code resource}, {@code service}, {@code repository},
+ * {@code client}, {@code security}, {@code exception} e {@code config}).</p>
  */
 @SpringBootApplication
 @OpenAPIDefinition(info = @Info(

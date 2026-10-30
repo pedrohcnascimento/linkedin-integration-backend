@@ -22,7 +22,8 @@ Este documento consolida o estado vigente observado no código e na configuraç�
 - Falha de transporte, respostas HTTP 408/409/5xx ou resposta de sucesso sem `x-restli-id` são tratadas como `OUTCOME_UNKNOWN`; a mesma chave e novas chaves para o mesmo draft são bloqueadas até reconciliação manual.
 - A reserva usa lock pessimista no draft para impedir que chaves diferentes iniciem publicação concorrente do mesmo draft.
 - Testes HTTP cobrem isolamento e paginação do histórico, falha persistida, reserva `PUBLISHING` interrompida, reconciliação manual (tanto para `PUBLISHED` quanto para `FAILED`/`RECONCILED_NOT_PUBLISHED`, com trilha em `audit_event`) e replay impedido. O teste de colisão usa repositório simulado; concorrência no banco real continua sem validação.
-- O OpenAPI local documenta o contrato completo de todas as 15 operações `/api/v1/**` implementadas (`AuthController`, `POST /api/v1/auth/logout` via `OpenApiConfig`, `LinkedInOAuthController` e `DraftController`), usando um único record `ApiError` compartilhado, validando paridade de rotas em `ApiDocumentationLocalProfileTest` e mantendo `/api-docs` e `/swagger-ui/**` explicitamente desativados no perfil `prod`.
+- O OpenAPI local documenta o contrato completo de todas as 15 operações `/api/v1/**` implementadas (`AuthResource`, `POST /api/v1/auth/logout` via `OpenApiConfig`, `LinkedInOAuthResource` e `DraftResource`), usando um único record `ApiError` compartilhado em `dto`, validando paridade de rotas em `ApiDocumentationLocalProfileTest` e mantendo `/api-docs` e `/swagger-ui/**` explicitamente desativados no perfil `prod`.
+- A organização de pacotes foi refatorada em 30/10/2026 para uma arquitetura em camadas orientada a DDD (`client`, `config`, `domain`, `dto`, `exception`, `repository`, `resource`, `security`, `service`), eliminando pacotes vazios e wrappers intermediários redundantes sem alterar rotas, payloads ou regras de negócio.
 
 ## Limites funcionais atuais
 

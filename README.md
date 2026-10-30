@@ -90,19 +90,23 @@ Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem 
 
 ## Arquitetura
 
-Hexagonal leve (ports & adapters): domínio isolado de Spring, JPA e do LinkedIn. Detalhes completos na seção 4 de [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#4-arquitetura-proposta).
+Arquitetura em camadas orientada a **Domain-Driven Design (DDD)**, inspirada no padrão organizacional de [`ChallengeEcopulseMaven`](https://github.com/pedrohcnascimento/ChallengeEcopulseMaven): cada pacote possui responsabilidade única, sem diretórios vazios nem wrappers redundantes, mantendo os modelos e regras de domínio em `domain`, os contratos HTTP isolados em `dto`, a exposição REST em `resource` e a orquestração transacional em `service`. Detalhes adicionais na seção 4 de [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#4-arquitetura-proposta).
 
 ```
 com.example.linkedinagent
-├── domain        # regras de negócio, sem dependência de framework
-├── application    # casos de uso (ports/in, ports/out)
-├── adapter
-│   ├── in/web     # controllers REST
-│   └── out        # LinkedIn HTTP client, persistência JPA, segurança
-├── config
-├── exception
-└── shared
+├── LinkedinAgentApplication.java   # Ponto de entrada Spring Boot e metadados OpenAPI
+├── client/                         # Clientes HTTP externos para a API oficial do LinkedIn (OAuth 2.0 + Posts API)
+├── config/                         # Configurações de segurança, CORS, rate limit, OpenAPI, clientes HTTP e Clock
+├── domain/                         # Entidades e objetos de valor do domínio com invariantes e transições de estado
+├── dto/                            # Contratos REST de entrada/saída (*Dtos + ApiError), isolados do domínio
+├── exception/                      # Exceções de domínio/integração e GlobalExceptionHandler (@RestControllerAdvice)
+├── repository/                     # Repositórios Spring Data JPA, conversores de persistência e RateLimitStore
+├── resource/                       # Endpoints REST (/api/v1/**) finos: AuthResource, LinkedInOAuthResource, DraftResource
+├── security/                       # Principal autenticado, UserDetailsService, cifragem AES-GCM de tokens e RateLimitInterceptor
+└── service/                        # Regras de aplicação e orquestração transacional (Registration, OAuth, DraftWorkflow, RateLimit)
 ```
+
+Fluxo de dependências: `resource` + `dto` → `service` → `domain` + `repository` + `client` + `security` (com tratamento transversal em `exception` e infraestrutura de beans em `config`).
 
 ## Como rodar
 

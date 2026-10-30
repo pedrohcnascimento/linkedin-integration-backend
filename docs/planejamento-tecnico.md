@@ -77,69 +77,46 @@ Fluxo permitido: coletar de fonte autorizada → filtrar localmente → apresent
 
 ## 4. Arquitetura proposta
 
+> **Atualização arquitetural (30/10/2026):** a árvore inicial `application/ports` + `adapter/in|out` + `shared` acumulou pacotes vazios e duplicação entre portas e repositórios JPA. O código-fonte foi consolidado em uma arquitetura em camadas orientada a **Domain-Driven Design (DDD)** (seguindo o padrão de referência `ChallengeEcopulseMaven`), eliminando todos os pacotes vazios e mantendo fronteiras explícitas entre contratos REST (`dto` + `resource`), serviços de aplicação (`service`), modelo rico de domínio (`domain`), persistência/stores (`repository`), clientes HTTP externos (`client`), segurança/cifragem (`security`), exceções centralizadas (`exception`) e configuração (`config`).
+
 ### 4.1 Princípios
 
-Separação de responsabilidades, baixo acoplamento, alta coesão, SOLID, Clean Code e DDD onde reduzir complexidade. O domínio não deve conhecer classes de resposta do LinkedIn, entidades JPA ou detalhes de HTTP.
+Separação clara de responsabilidades, baixo acoplamento, alta coesão, SOLID, Clean Code e Domain-Driven Design (DDD). Os contratos JSON externos do LinkedIn permanecem encapsulados em `client`, e os payloads HTTP da API própria permanecem em `dto`.
 
-Quatro áreas:
-1. **Domínio:** regras, entidades de negócio, objetos de valor e portas
-2. **Aplicação:** casos de uso, transações e orquestração
-3. **Adaptadores de entrada:** controllers REST, autenticação e validação de requests
-4. **Adaptadores de saída:** JPA, cliente HTTP do LinkedIn, armazenamento de segredos e observabilidade
+Responsabilidades por camada:
+1. **Domínio (`domain`):** entidades de negócio (`AppUser`, `LinkedInAuthorization`, `OAuthTransaction`, `ContentDraft`, `Publication`, `AuditEvent`, `Opportunity`) e objetos de valor (`LinkedInConnection`, `LinkedInPublicationCommand`, `PublicationResult`, `RateLimitBucket`), concentrando constantes de estado, invariantes e transições válidas.
+2. **Serviços de aplicação (`service`):** casos de uso, controle transacional e orquestração (`RegistrationService`, `LinkedInOAuthService`, `DraftWorkflowService`, `RateLimitService`).
+3. **Recursos REST e DTOs (`resource`, `dto`, `exception`):** controllers REST finos (`AuthResource`, `LinkedInOAuthResource`, `DraftResource`), records de request/response com Bean Validation/OpenAPI (`AuthDtos`, `LinkedInOAuthDtos`, `DraftDtos`, `PublicationDtos`, `ApiError`) e mapeamento uniforme de erros em `GlobalExceptionHandler`.
+4. **Infraestrutura e integrações (`repository`, `client`, `security`, `config`):** repositórios JPA e stores de rate limit (`InMemoryRateLimitStore`, `RedisRateLimitStore`), clientes HTTP oficiais do LinkedIn (`LinkedInOAuthClient`/`LinkedInOAuthHttpClient`, `LinkedInPublishingClient`/`LinkedInPublishingHttpClient`), cifragem de tokens (`TokenCipher`/`AesGcmTokenCipher`), autenticação de sessão e beans Spring.
 
-### 4.2 Estrutura de pacotes
+### 4.2 Estrutura de pacotes vigente
 
 ```
 com.example.linkedinagent
-├── domain
-│   ├── user
-│   ├── linkedin
-│   ├── publishing
-│   ├── opportunity
-│   └── common
-├── application
-│   ├── auth
-│   ├── publishing
-│   ├── opportunity
-│   └── ports
-│       ├── in
-│       └── out
-├── adapter
-│   ├── in
-│   │   └── web
-│   └── out
-│       ├── linkedin
-│       ├── persistence
-│       └── security
+├── LinkedinAgentApplication.java
+├── client
+│   ├── LinkedInOAuthClient.java
+│   ├── LinkedInOAuthHttpClient.java
+│   ├── LinkedInPublishingClient.java
+│   └── LinkedInPublishingHttpClient.java
 ├── config
+├── domain
+├── dto
 ├── exception
-└── shared
+├── repository
+├── resource
+├── security
+└── service
 ```
 
-Alternativa mais simples para o primeiro commit: organizar por feature, mantendo `domain`, `application` e `adapter` dentro de cada feature. Regra essencial: **os DTOs externos do LinkedIn ficam dentro do adaptador `linkedin` e nunca atravessam a fronteira do caso de uso.**
+Regra essencial mantida: **os DTOs JSON externos do LinkedIn ficam restritos às implementações em `client` e nunca atravessam a fronteira para `service`, `domain` ou `resource`.**
 
-### 4.3 Portas e adaptadores
+### 4.3 Fronteiras de integração e persistência
 
-**Portas de entrada:**
-- `StartLinkedInAuthorizationUseCase`
-- `CompleteLinkedInAuthorizationUseCase`
-- `CreateDraftUseCase`
-- `ApproveDraftUseCase`
-- `PublishApprovedDraftUseCase`
-- `ListPublicationHistoryUseCase`
-- `RegisterOpportunityUseCase`
-
-**Portas de saída:**
-- `LinkedInAuthorizationPort`
-- `LinkedInProfilePort`
-- `LinkedInPublishingPort`
-- `AccessTokenRepository`
-- `UserRepository`
-- `DraftRepository`
-- `PublicationRepository`
-- `ClockPort` (para testes determinísticos)
-
-A implementação HTTP do LinkedIn deve converter respostas externas em modelos internos. O domínio trabalha com `LinkedInPublicationCommand` e `PublicationResult` — nunca com `com.linkedin.ugc.ShareContent` ou mapas JSON crus.
+- **Clientes externos (`client`):** `LinkedInOAuthClient` e `LinkedInPublishingClient` expõem contratos orientados ao domínio (`LinkedInPublicationCommand`, `PublicationResult`), isolando headers Rest.li, códigos HTTP do LinkedIn e serialização externa em `LinkedInOAuthHttpClient` e `LinkedInPublishingHttpClient`.
+- **Segurança (`security`):** `TokenCipher` (`AesGcmTokenCipher`) protege tokens em repouso; `AppUserPrincipal`, `AppUserDetailsService` e `RateLimitInterceptor` isolam autenticação local e proteção de borda.
+- **Persistência e rate limit (`repository`):** repositórios Spring Data JPA operam diretamente sobre as entidades de `domain`, enquanto `RateLimitStore` abstrai `InMemoryRateLimitStore` (`!prod`) e `RedisRateLimitStore` (`prod`).
+- **Determinismo temporal (`config`):** `Clock` injetável permite testes determinísticos de expiração de `state`, tokens e timestamps de auditoria/publicação.
 
 ## 5. Fluxo OAuth 2.0
 
