@@ -14,7 +14,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.endsWith;
+import static org.hamcrest.Matchers.hasItem;
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:sqlite::memory:",
@@ -64,6 +67,50 @@ class ApiDocumentationLocalProfileTest {
                         org.hamcrest.Matchers.is("NONE")))
                 .andExpect(jsonPath("$.paths['/api/v1/drafts'].post.requestBody.content['application/json'].examples['Draft textual válido'].value.mediaCategory",
                         org.hamcrest.Matchers.is("NONE")));
+    }
+
+    @Test
+    void openApiDocumentsThePublicationIdempotencyAndFailureContract() throws Exception {
+        String publish = "$.paths['/api/v1/drafts/{id}/publish'].post";
+        String history = "$.paths['/api/v1/publications'].get";
+        mockMvc.perform(get("/api-docs"))
+                .andExpect(status().isOk())
+                // Header obrigatório no contrato, com os mesmos limites validados pelo serviço.
+                .andExpect(jsonPath(publish + ".parameters[?(@.name == 'Idempotency-Key')].in").value(hasItem("header")))
+                .andExpect(jsonPath(publish + ".parameters[?(@.name == 'Idempotency-Key')].required").value(hasItem(true)))
+                .andExpect(jsonPath(publish + ".parameters[?(@.name == 'Idempotency-Key')].schema.maxLength").value(hasItem(200)))
+                // Replay concluído mantém 201 e o mesmo schema de publicação.
+                .andExpect(jsonPath(publish + ".description", containsString("mesmo status 201")))
+                .andExpect(jsonPath(publish + ".responses['201'].content['application/json'].schema['$ref']",
+                        endsWith("/PublicationResponse")))
+                // Cada código de erro emitido pelo fluxo de publicação tem schema e exemplo.
+                .andExpect(jsonPath(publish + ".responses['400'].content['application/json'].examples.IDEMPOTENCY_KEY_REQUIRED").exists())
+                .andExpect(jsonPath(publish + ".responses['404'].content['application/json'].examples.DRAFT_NOT_FOUND").exists())
+                .andExpect(jsonPath(publish + ".responses['409'].content['application/json'].schema['$ref']", endsWith("/ApiError")))
+                .andExpect(jsonPath(publish + ".responses['409'].content['application/json'].examples.PUBLICATION_ALREADY_PROCESSED.value.code")
+                        .value("PUBLICATION_ALREADY_PROCESSED"))
+                .andExpect(jsonPath(publish + ".responses['409'].content['application/json'].examples.PUBLICATION_OUTCOME_UNKNOWN.value.code")
+                        .value("PUBLICATION_OUTCOME_UNKNOWN"))
+                .andExpect(jsonPath(publish + ".responses['422'].content['application/json'].examples.DRAFT_NOT_APPROVED").exists())
+                .andExpect(jsonPath(publish + ".responses['422'].content['application/json'].examples.LINKEDIN_CONNECTION_REQUIRED").exists())
+                .andExpect(jsonPath(publish + ".responses['429'].content['application/json'].examples.RATE_LIMITED").exists())
+                .andExpect(jsonPath(publish + ".responses['429'].content['application/json'].examples.LINKEDIN_RATE_LIMITED").exists())
+                .andExpect(jsonPath(publish + ".responses['502'].content['application/json'].examples.LINKEDIN_RESULT_UNKNOWN.value.code")
+                        .value("LINKEDIN_RESULT_UNKNOWN"))
+                .andExpect(jsonPath(publish + ".responses['503'].content['application/json'].examples.RATE_LIMIT_UNAVAILABLE").exists())
+                .andExpect(jsonPath(publish + ".responses['401']").exists())
+                .andExpect(jsonPath(publish + ".responses['403']").exists())
+                // Histórico expõe todos os estados persistidos, inclusive o resultado ambíguo.
+                .andExpect(jsonPath(history + ".description", containsString("OUTCOME_UNKNOWN")))
+                .andExpect(jsonPath(history + ".responses['200'].content['application/json'].schema['$ref']",
+                        endsWith("/PublicationPageResponse")))
+                .andExpect(jsonPath(history + ".responses['200'].content['application/json'].examples.*.value.content[*].status")
+                        .value(hasItem("OUTCOME_UNKNOWN")))
+                .andExpect(jsonPath(history + ".responses['400'].content['application/json'].examples.INVALID_PAGINATION").exists())
+                .andExpect(jsonPath("$.components.schemas.PublicationResponse.properties.status.enum",
+                        containsInAnyOrder("PUBLISHING", "PUBLISHED", "FAILED", "OUTCOME_UNKNOWN")))
+                .andExpect(jsonPath("$.components.schemas.PublicationResponse.properties.draftId.type", hasItem("null")))
+                .andExpect(jsonPath("$.components.schemas.ApiError.properties.code").exists());
     }
 
     @Test

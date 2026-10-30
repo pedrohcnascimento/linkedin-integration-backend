@@ -125,16 +125,113 @@ public class DraftController {
     }
 
     @PostMapping("/drafts/{id}/publish")
-    @Operation(summary = "Publicar um draft aprovado", description = "Publica no LinkedIn um draft APPROVED. Execute primeiro o fluxo OAuth do LinkedIn. Requer o header Idempotency-Key para evitar publicação duplicada.")
+    @Operation(summary = "Publicar um draft aprovado", description = """
+            Publica no LinkedIn um draft APPROVED. Execute primeiro o fluxo OAuth do LinkedIn. Requer o header \
+            Idempotency-Key para evitar publicação duplicada.
+
+            Contrato de idempotência e falhas:
+            - Replay com a mesma chave depois de PUBLISHED devolve a publicação já salva, com o mesmo status 201, \
+            sem nova chamada ao LinkedIn.
+            - Repetir a mesma chave depois de FAILED, OUTCOME_UNKNOWN ou durante PUBLISHING retorna 409 \
+            PUBLICATION_ALREADY_PROCESSED. Não há retry automático.
+            - Uma chave nova para um draft com tentativa PUBLISHING ou OUTCOME_UNKNOWN retorna 409 \
+            PUBLICATION_OUTCOME_UNKNOWN até a reconciliação manual no LinkedIn.
+            - 502 LINKEDIN_RESULT_UNKNOWN significa que o LinkedIn pode ter aceitado o post; a tentativa fica \
+            registrada como OUTCOME_UNKNOWN no histórico. Não reenvie antes de conferir o perfil no LinkedIn.
+            """)
     @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Publicação concluída ou replay da publicação concluída."),
-            @ApiResponse(responseCode = "409", description = "A tentativa já foi processada ou requer reconciliação antes de novo envio."),
-            @ApiResponse(responseCode = "502", description = "O resultado externo é desconhecido; reconcilie no LinkedIn antes de tentar novamente.")
+            @ApiResponse(responseCode = "201", description = "Publicação concluída ou replay da publicação concluída com a mesma chave (mesmo corpo, sem nova chamada ao LinkedIn).",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = PublicationResponse.class),
+                            examples = @ExampleObject(name = "Publicação concluída", value = """
+                                    {
+                                      "id": "0b8f7c52-8d6f-4b8e-9a51-3f0f4a8f2c11",
+                                      "draftId": "5d2c1f0e-7a3b-4c9d-8e1f-2a3b4c5d6e7f",
+                                      "externalPostId": "urn:li:share:7000000000000000000",
+                                      "status": "PUBLISHED",
+                                      "failureCode": null,
+                                      "publishedAt": "2026-10-30T12:00:01Z",
+                                      "createdAt": "2026-10-30T12:00:00Z"
+                                    }
+                                    """))),
+            @ApiResponse(responseCode = "400", description = "Header Idempotency-Key ausente, vazio ou com mais de 200 caracteres.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "IDEMPOTENCY_KEY_REQUIRED", value = """
+                                    {"code": "IDEMPOTENCY_KEY_REQUIRED", "message": "Idempotency-Key is required."}
+                                    """))),
+            @ApiResponse(responseCode = "401", description = "Sessão local ausente ou expirada (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Token CSRF ausente ou expirado; execute GET /api/v1/auth/csrf e tente novamente (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Draft não encontrado para o usuário autenticado.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "DRAFT_NOT_FOUND", value = """
+                                    {"code": "DRAFT_NOT_FOUND", "message": "Draft was not found."}
+                                    """))),
+            @ApiResponse(responseCode = "409", description = "A tentativa já foi processada ou requer reconciliação antes de novo envio.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = {
+                                    @ExampleObject(name = "PUBLICATION_ALREADY_PROCESSED",
+                                            description = "Mesma chave reutilizada depois de FAILED, OUTCOME_UNKNOWN ou durante PUBLISHING.",
+                                            value = """
+                                                    {"code": "PUBLICATION_ALREADY_PROCESSED", "message": "This idempotent publication request was already processed."}
+                                                    """),
+                                    @ExampleObject(name = "PUBLICATION_OUTCOME_UNKNOWN",
+                                            description = "Chave nova para um draft com tentativa PUBLISHING ou OUTCOME_UNKNOWN não reconciliada.",
+                                            value = """
+                                                    {"code": "PUBLICATION_OUTCOME_UNKNOWN", "message": "A previous publication attempt is unresolved; reconcile it before retrying."}
+                                                    """)
+                            })),
+            @ApiResponse(responseCode = "422", description = "Draft não está em APPROVED (inclusive draft já PUBLISHED usado com outra chave) ou conexão LinkedIn ativa ausente/expirada.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = {
+                                    @ExampleObject(name = "DRAFT_NOT_APPROVED", value = """
+                                            {"code": "DRAFT_NOT_APPROVED", "message": "Only an APPROVED draft can be published."}
+                                            """),
+                                    @ExampleObject(name = "LINKEDIN_CONNECTION_REQUIRED", value = """
+                                            {"code": "LINKEDIN_CONNECTION_REQUIRED", "message": "An active LinkedIn connection is required."}
+                                            """)
+                            })),
+            @ApiResponse(responseCode = "429", description = "Limite local de publicação excedido (RATE_LIMITED, com Retry-After) ou limite informado pelo LinkedIn (LINKEDIN_RATE_LIMITED, registrado como FAILED).",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = {
+                                    @ExampleObject(name = "RATE_LIMITED", value = """
+                                            {"code": "RATE_LIMITED", "message": "Too many requests. Please retry later."}
+                                            """),
+                                    @ExampleObject(name = "LINKEDIN_RATE_LIMITED", value = """
+                                            {"code": "LINKEDIN_RATE_LIMITED", "message": "LinkedIn publication failed."}
+                                            """)
+                            })),
+            @ApiResponse(responseCode = "502", description = "O resultado externo é desconhecido (LINKEDIN_RESULT_UNKNOWN, registrado como OUTCOME_UNKNOWN; reconcilie no LinkedIn antes de tentar novamente) ou o LinkedIn recusou a publicação (código LINKEDIN_*, registrado como FAILED).",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = {
+                                    @ExampleObject(name = "LINKEDIN_RESULT_UNKNOWN", value = """
+                                            {"code": "LINKEDIN_RESULT_UNKNOWN", "message": "LinkedIn may have accepted the publication; reconcile it before retrying."}
+                                            """),
+                                    @ExampleObject(name = "LINKEDIN_ACCESS_TOKEN_INVALID",
+                                            description = "Exemplo de falha conhecida do provedor; o código varia conforme a resposta do LinkedIn.",
+                                            value = """
+                                                    {"code": "LINKEDIN_ACCESS_TOKEN_INVALID", "message": "LinkedIn publication failed."}
+                                                    """)
+                            })),
+            @ApiResponse(responseCode = "503", description = "Armazenamento de rate limiting indisponível no perfil prod (fail-closed).",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "RATE_LIMIT_UNAVAILABLE", value = """
+                                    {"code": "RATE_LIMIT_UNAVAILABLE", "message": "Requests are temporarily unavailable."}
+                                    """)))
     })
     public ResponseEntity<PublicationResponse> publish(
             @AuthenticationPrincipal AppUserPrincipal user,
+            @Parameter(description = "UUID real do draft APPROVED retornado pelo POST ou GET /api/v1/drafts.")
             @PathVariable UUID id,
-            @Parameter(description = "Chave estável para repetir a mesma operação sem criar outro post.", required = true)
+            @Parameter(description = "Chave estável (1 a 200 caracteres) para repetir a mesma operação sem criar outro post. Reutilize a mesma chave apenas para repetir a mesma tentativa.",
+                    required = true, example = "publish-2026-10-30-001",
+                    schema = @Schema(type = "string", minLength = 1, maxLength = 200))
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
         PublicationEntity publication = workflowService.publish(user.getId(), id, idempotencyKey);
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(publication));
@@ -142,11 +239,48 @@ public class DraftController {
 
     @GetMapping("/publications")
     @Operation(tags = "Publications", summary = "Listar histórico de publicações",
-            description = "Retorna somente publicações do usuário autenticado, ordenadas por criação mais recente e UUID descendente. Página começa em 0; tamanho máximo de 50.")
+            description = "Retorna somente publicações do usuário autenticado, ordenadas por criação mais recente e UUID descendente. Página começa em 0; tamanho máximo de 50. "
+                    + "Inclui tentativas PUBLISHED, FAILED, PUBLISHING e OUTCOME_UNKNOWN; as duas últimas bloqueiam novas publicações do mesmo draft até reconciliação manual. "
+                    + "draftId pode ser nulo se o draft associado tiver sido removido.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Página do histórico do usuário."),
-            @ApiResponse(responseCode = "400", description = "Parâmetros page/size fora dos limites permitidos."),
-            @ApiResponse(responseCode = "401", description = "Sessão local ausente.")
+            @ApiResponse(responseCode = "200", description = "Página do histórico do usuário.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = PublicationPageResponse.class),
+                            examples = @ExampleObject(name = "Histórico com sucesso e resultado ambíguo", value = """
+                                    {
+                                      "content": [
+                                        {
+                                          "id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+                                          "draftId": "7e6d5c4b-3a29-4180-9f7e-6d5c4b3a2918",
+                                          "externalPostId": null,
+                                          "status": "OUTCOME_UNKNOWN",
+                                          "failureCode": "LINKEDIN_RESULT_UNKNOWN",
+                                          "publishedAt": null,
+                                          "createdAt": "2026-10-30T12:05:00Z"
+                                        },
+                                        {
+                                          "id": "0b8f7c52-8d6f-4b8e-9a51-3f0f4a8f2c11",
+                                          "draftId": "5d2c1f0e-7a3b-4c9d-8e1f-2a3b4c5d6e7f",
+                                          "externalPostId": "urn:li:share:7000000000000000000",
+                                          "status": "PUBLISHED",
+                                          "failureCode": null,
+                                          "publishedAt": "2026-10-30T12:00:01Z",
+                                          "createdAt": "2026-10-30T12:00:00Z"
+                                        }
+                                      ],
+                                      "page": 0,
+                                      "size": 20,
+                                      "totalElements": 2,
+                                      "totalPages": 1
+                                    }
+                                    """))),
+            @ApiResponse(responseCode = "400", description = "Parâmetros page/size fora dos limites permitidos.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "INVALID_PAGINATION", value = """
+                                    {"code": "INVALID_PAGINATION", "message": "Page must be non-negative and size must be between 1 and 50."}
+                                    """))),
+            @ApiResponse(responseCode = "401", description = "Sessão local ausente (sem corpo).", content = @Content)
     })
     public PublicationPageResponse listPublications(
             @AuthenticationPrincipal AppUserPrincipal user,
@@ -240,14 +374,41 @@ public class DraftController {
                                     long totalElements, int totalPages) {
     }
 
+    @Schema(description = "Página do histórico de publicações do usuário autenticado.")
     public record PublicationPageResponse(java.util.List<PublicationResponse> content, int page, int size,
                                           long totalElements, int totalPages) {
     }
 
-    public record PublicationResponse(UUID id, UUID draftId, String externalPostId, String status,
-                                      String failureCode, Instant publishedAt, Instant createdAt) {
+    @Schema(description = "Tentativa de publicação registrada para um draft.")
+    public record PublicationResponse(
+            @Schema(description = "UUID da tentativa de publicação.")
+            UUID id,
+            @Schema(description = "UUID do draft publicado; nulo se o draft associado tiver sido removido.", nullable = true)
+            UUID draftId,
+            @Schema(description = "Identificador retornado pelo LinkedIn no header x-restli-id; presente somente em PUBLISHED.",
+                    nullable = true, example = "urn:li:share:7000000000000000000")
+            String externalPostId,
+            @Schema(description = """
+                    PUBLISHING: reserva gravada antes da chamada ao LinkedIn (em curso ou interrompida; bloqueia novas tentativas). \
+                    PUBLISHED: LinkedIn confirmou o post. \
+                    FAILED: falha conhecida do LinkedIn; a mesma chave não é reenviada. \
+                    OUTCOME_UNKNOWN: o LinkedIn pode ter aceitado o post; exige reconciliação manual antes de qualquer reenvio.""",
+                    allowableValues = {"PUBLISHING", "PUBLISHED", "FAILED", "OUTCOME_UNKNOWN"}, example = "PUBLISHED")
+            String status,
+            @Schema(description = "Código interno da falha (LINKEDIN_* ou LINKEDIN_RESULT_UNKNOWN); nulo em PUBLISHING e PUBLISHED.",
+                    nullable = true, example = "LINKEDIN_RESULT_UNKNOWN")
+            String failureCode,
+            @Schema(description = "Instante da confirmação de publicação; nulo fora de PUBLISHED.", nullable = true)
+            Instant publishedAt,
+            @Schema(description = "Instante em que a tentativa foi reservada.")
+            Instant createdAt) {
     }
 
-    public record ApiError(String code, String message) {
+    @Schema(description = "Erro de negócio estável. Use code para decisões programáticas; message é apenas informativa.")
+    public record ApiError(
+            @Schema(description = "Código estável do erro.", example = "PUBLICATION_OUTCOME_UNKNOWN")
+            String code,
+            @Schema(description = "Mensagem informativa, sem detalhes do provedor externo.")
+            String message) {
     }
 }

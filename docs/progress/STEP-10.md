@@ -33,9 +33,24 @@ A entrega inicial passou com 38 testes. Na continuação do Passo 10, `mvn test`
 - A publicação ambígua e as reservas `PUBLISHING` bloqueiam novas chaves para o mesmo draft; o HTTP retorna conflito para tentativas e `502 LINKEDIN_RESULT_UNKNOWN` para o resultado ambíguo inicial.
 - Foram adicionados testes de estado/retry ambíguo, erros HTTP 409/5xx e contrato OpenAPI. `mvn clean test` passou com JDK 21, totalizando 58 testes sem falhas, erros ou skips.
 
+## Continuação de 30/10/2026 — contrato OpenAPI de publicação e histórico
+
+**Objetivo:** fechar a pendência 2 (revisão OpenAPI para `OUTCOME_UNKNOWN`, conflito e replay) sem alterar comportamento de runtime.
+
+**Alterações:**
+- `DraftController`: `POST /api/v1/drafts/{id}/publish` passou a documentar o contrato de idempotência na descrição da operação e todas as respostas emitidas pelo fluxo — `201` (incluindo replay, com schema `PublicationResponse`), `400 IDEMPOTENCY_KEY_REQUIRED`, `401`/`403` sem corpo, `404 DRAFT_NOT_FOUND`, `409 PUBLICATION_ALREADY_PROCESSED`/`PUBLICATION_OUTCOME_UNKNOWN`, `422 DRAFT_NOT_APPROVED`/`LINKEDIN_CONNECTION_REQUIRED`, `429 RATE_LIMITED`/`LINKEDIN_RATE_LIMITED`, `502 LINKEDIN_RESULT_UNKNOWN`/falha conhecida e `503 RATE_LIMIT_UNAVAILABLE`, cada uma com schema `ApiError` e exemplo.
+- O header `Idempotency-Key` aparece como obrigatório, com `minLength 1` e `maxLength 200`, os mesmos limites do serviço. O binding continua `required = false` para preservar o erro `400` estável do próprio serviço.
+- `GET /api/v1/publications`: schema `PublicationPageResponse`, exemplo com `OUTCOME_UNKNOWN` e `PUBLISHED`, `400 INVALID_PAGINATION` e `401`.
+- `PublicationResponse` documenta `status` como enumeração (`PUBLISHING`, `PUBLISHED`, `FAILED`, `OUTCOME_UNKNOWN`) com o significado operacional de cada estado; `draftId`, `externalPostId`, `failureCode` e `publishedAt` aparecem como anuláveis (OpenAPI 3.1).
+- `ApiDocumentationLocalProfileTest`: novo teste `openApiDocumentsThePublicationIdempotencyAndFailureContract` verifica esses elementos no `/api-docs`.
+
+**Decisões:** nenhum status HTTP ou código de erro foi alterado; o replay concluído continua respondendo `201`. A documentação descreve o comportamento já coberto pelos testes HTTP.
+
+**Validação:** `mvn -o clean test` passou com 59 testes (58 anteriores + 1 novo), sem falhas, erros ou skips, usando o JBR 25 do IntelliJ (não há JDK 21 no PATH desta máquina). A validação com JDK 21 continua pendente no item de release. Observação de ambiente: a auto-anexação do Mockito (inline mock maker) trava dentro de ambientes de execução isolados; fora deles a suíte roda normalmente.
+
 ## Pendências remanescentes
 
-1. Executar migrations, `ddl-auto=validate` e testes de concorrência em Oracle descartável para mesma chave, chaves distintas, reservas interrompidas e lock pessimista.
-2. Completar a revisão OpenAPI com schemas e exemplos para `OUTCOME_UNKNOWN`, respostas de conflito e replay.
+1. Executar migrations, `ddl-auto=validate` e testes de concorrência em Oracle descartável para mesma chave, chaves distintas, reservas interrompidas e lock pessimista. Não há Docker nem Oracle disponíveis no ambiente desta continuação.
+2. ~~Completar a revisão OpenAPI com schemas e exemplos para `OUTCOME_UNKNOWN`, respostas de conflito e replay.~~ Concluído em 30/10/2026.
 3. Documentar uma rotina operacional segura de reconciliação manual; não oferecer retry automático.
-4. O replay concluído responde `201` hoje. O contrato deve ser documentado e só alterado com decisão explícita e teste de compatibilidade.
+4. O replay concluído responde `201` hoje. O contrato está documentado no OpenAPI e só deve ser alterado com decisão explícita e teste de compatibilidade.

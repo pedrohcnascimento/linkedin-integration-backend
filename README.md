@@ -83,7 +83,7 @@ Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem 
 
 ## Próximos passos
 
-1. Concluir o Passo 10: validar concorrência, migrations e schema em Oracle descartável e revisar o contrato OpenAPI. Resultado ambíguo já bloqueia novos envios até reconciliação manual.
+1. Concluir o Passo 10: validar concorrência, migrations e schema em Oracle descartável e documentar a rotina de reconciliação manual. O contrato OpenAPI de publicação e histórico já está revisado; resultado ambíguo já bloqueia novos envios até reconciliação manual.
 2. Confirmar JDK 21, Redis e configuração do IP atrás do proxy antes de exposição pública. A presença de dependências PostgreSQL no Maven não significa que PostgreSQL seja o banco configurado no perfil `prod`.
 3. Depois de fechar o Passo 10, confirmar prioridade e escopo de oportunidades locais para iniciar o Passo 11.
 

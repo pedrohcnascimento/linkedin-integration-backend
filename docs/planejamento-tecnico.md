@@ -446,7 +446,7 @@ O agente **não deve avançar automaticamente** quando um teste falhar, uma migr
 **Plano de conclusão:**
 1. A política definida é bloquear novas tentativas após timeout/resultado externo ambíguo e exigir reconciliação manual; não adicionar retry cego. A reserva `PUBLISHING` é persistida antes da chamada externa e também bloqueia uma segunda chave para o mesmo draft.
 2. Oracle foi confirmado como banco-alvo de `prod`; preparar schema descartável e validar migrations, `ddl-auto=validate`, chamadas simultâneas com mesma chave e chaves diferentes. O lock pessimista e a unicidade precisam de demonstração no Oracle; teste com repositório simulado não substitui concorrência real.
-3. Completar a revisão OpenAPI e de schema/respostas, incluindo histórico, limites de paginação, propriedade, `OUTCOME_UNKNOWN`, falhas e replay.
+3. Completar a revisão OpenAPI e de schema/respostas, incluindo histórico, limites de paginação, propriedade, `OUTCOME_UNKNOWN`, falhas e replay. **Concluído em 30/10/2026** para publicação e histórico (ver `STEP-10.md`).
 **Critério de conclusão:** política para resultado ambíguo registrada e implementada, concorrência e replay demonstrados por testes Oracle e contrato revisado. A etapa permanece em andamento até cumprir esses critérios.
 
 ### Passo 11 — Adicionar oportunidades locais sem scraping
