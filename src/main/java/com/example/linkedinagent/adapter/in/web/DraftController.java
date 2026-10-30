@@ -8,6 +8,7 @@ import com.example.linkedinagent.application.publishing.DraftWorkflowService;
 import com.example.linkedinagent.exception.LinkedInPublishingException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -19,11 +20,14 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -49,11 +53,44 @@ public class DraftController {
     }
 
     @PostMapping("/drafts")
+    @Operation(summary = "Criar um draft textual",
+            description = "Cria um rascunho em estado DRAFT pertencente à sessão autenticada. Nesta versão apenas conteúdo textual (mediaCategory NONE e originalUrl vazio) é aceito.")
     @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Draft textual criado."),
-            @ApiResponse(responseCode = "401", description = "Sessão local ausente."),
-            @ApiResponse(responseCode = "422", description = "Conteúdo de mídia ainda não suportado; use mediaCategory NONE e deixe originalUrl vazio."),
-            @ApiResponse(responseCode = "403", description = "Token CSRF ausente ou expirado; execute GET /api/v1/auth/csrf e tente novamente.")
+            @ApiResponse(responseCode = "201", description = "Draft textual criado.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = DraftResponse.class),
+                            examples = @ExampleObject(name = "Draft criado", value = """
+                                    {
+                                      "id": "5d2c1f0e-7a3b-4c9d-8e1f-2a3b4c5d6e7f",
+                                      "text": "Minha primeira publicação pelo LinkedIn Integration Backend.",
+                                      "mediaCategory": "NONE",
+                                      "originalUrl": null,
+                                      "title": "Minha primeira publicação",
+                                      "status": "DRAFT",
+                                      "approvedAt": null,
+                                      "createdAt": "2026-10-30T12:00:00Z",
+                                      "updatedAt": "2026-10-30T12:00:00Z"
+                                    }
+                                    """))),
+            @ApiResponse(responseCode = "400", description = "JSON malformado, violação de tamanho/obrigatoriedade ou texto em branco.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = {
+                                    @ExampleObject(name = "INVALID_REQUEST", value = """
+                                            {"code": "INVALID_REQUEST", "message": "Request validation failed."}
+                                            """),
+                                    @ExampleObject(name = "INVALID_DRAFT", value = """
+                                            {"code": "INVALID_DRAFT", "message": "Draft text is required."}
+                                            """)
+                            })),
+            @ApiResponse(responseCode = "401", description = "Sessão local ausente ou expirada (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Token CSRF ausente ou expirado; execute GET /api/v1/auth/csrf e tente novamente (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "422", description = "Conteúdo de mídia ainda não suportado; use mediaCategory NONE e deixe originalUrl vazio.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "DRAFT_MEDIA_UNSUPPORTED", value = """
+                                    {"code": "DRAFT_MEDIA_UNSUPPORTED", "message": "Only text drafts are supported in this release."}
+                                    """)))
     })
     public ResponseEntity<DraftResponse> create(
             @AuthenticationPrincipal AppUserPrincipal user,
@@ -75,9 +112,28 @@ public class DraftController {
 
     @GetMapping("/drafts")
     @Operation(summary = "Listar drafts do usuário", description = "Requer login local. Retorna somente drafts pertencentes à sessão autenticada, ordenados por atualização mais recente. A página começa em 0 e o tamanho máximo é 50.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Página de drafts do usuário autenticado.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = DraftPageResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Parâmetros page/size inválidos ou fora dos limites permitidos.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = {
+                                    @ExampleObject(name = "INVALID_PAGINATION", value = """
+                                            {"code": "INVALID_PAGINATION", "message": "Page must be non-negative and size must be between 1 and 50."}
+                                            """),
+                                    @ExampleObject(name = "INVALID_REQUEST", value = """
+                                            {"code": "INVALID_REQUEST", "message": "Request validation failed."}
+                                            """)
+                            })),
+            @ApiResponse(responseCode = "401", description = "Sessão local ausente ou expirada (sem corpo).", content = @Content)
+    })
     public DraftPageResponse list(
             @AuthenticationPrincipal AppUserPrincipal user,
+            @Parameter(description = "Índice da página (base 0).", schema = @Schema(type = "integer", minimum = "0", defaultValue = "0"))
             @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Quantidade de itens por página (1 a 50).", schema = @Schema(type = "integer", minimum = "1", maximum = "50", defaultValue = "20"))
             @RequestParam(defaultValue = "20") int size) {
         if (page < 0 || size < 1 || size > 50) {
             throw new DraftWorkflowException("INVALID_PAGINATION",
@@ -92,11 +148,43 @@ public class DraftController {
     @PatchMapping("/drafts/{id}")
     @Operation(summary = "Editar um draft", description = "Atualiza parcialmente texto ou título. Use no caminho o id real retornado pelo POST /api/v1/drafts ou GET /api/v1/drafts; o UUID 3fa85f64-5717-4562-b3fc-2c963f66afa6 exibido pelo Swagger é apenas um exemplo. Só funciona enquanto o draft estiver em DRAFT; depois da aprovação ele não pode mais ser editado.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Draft atualizado."),
-            @ApiResponse(responseCode = "404", description = "Draft não encontrado para o usuário autenticado; confirme o UUID retornado pelo POST ou GET."),
-            @ApiResponse(responseCode = "409", description = "O draft já foi aprovado e não pode mais ser editado."),
-            @ApiResponse(responseCode = "422", description = "Conteúdo de mídia ainda não suportado."),
-            @ApiResponse(responseCode = "403", description = "Token CSRF ausente ou expirado.")
+            @ApiResponse(responseCode = "200", description = "Draft atualizado.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = DraftResponse.class))),
+            @ApiResponse(responseCode = "400", description = "JSON malformado, nenhum campo informado, texto em branco, UUID inválido ou limite de tamanho excedido.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = {
+                                    @ExampleObject(name = "INVALID_DRAFT_UPDATE", value = """
+                                            {"code": "INVALID_DRAFT_UPDATE", "message": "At least one draft field must be provided."}
+                                            """),
+                                    @ExampleObject(name = "INVALID_DRAFT", value = """
+                                            {"code": "INVALID_DRAFT", "message": "Draft text cannot be blank."}
+                                            """),
+                                    @ExampleObject(name = "INVALID_REQUEST", value = """
+                                            {"code": "INVALID_REQUEST", "message": "Request validation failed."}
+                                            """)
+                            })),
+            @ApiResponse(responseCode = "401", description = "Sessão local ausente ou expirada (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Token CSRF ausente ou expirado (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Draft não encontrado para o usuário autenticado; confirme o UUID retornado pelo POST ou GET.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "DRAFT_NOT_FOUND", value = """
+                                    {"code": "DRAFT_NOT_FOUND", "message": "Draft was not found."}
+                                    """))),
+            @ApiResponse(responseCode = "409", description = "O draft já foi aprovado e não pode mais ser editado.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "DRAFT_INVALID_STATE", value = """
+                                    {"code": "DRAFT_INVALID_STATE", "message": "Only a DRAFT can be edited."}
+                                    """))),
+            @ApiResponse(responseCode = "422", description = "Conteúdo de mídia ainda não suportado.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "DRAFT_MEDIA_UNSUPPORTED", value = """
+                                    {"code": "DRAFT_MEDIA_UNSUPPORTED", "message": "Only text drafts are supported in this release."}
+                                    """)))
     })
     public DraftResponse update(
             @AuthenticationPrincipal AppUserPrincipal user,
@@ -118,8 +206,47 @@ public class DraftController {
 
     @PostMapping("/drafts/{id}/approve")
     @Operation(summary = "Aprovar um draft", description = "Muda o draft de DRAFT para APPROVED. Depois disso o conteúdo fica imutável e pode ser publicado.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Draft aprovado e pronto para publicação.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = DraftResponse.class),
+                            examples = @ExampleObject(name = "Draft aprovado", value = """
+                                    {
+                                      "id": "5d2c1f0e-7a3b-4c9d-8e1f-2a3b4c5d6e7f",
+                                      "text": "Minha primeira publicação pelo LinkedIn Integration Backend.",
+                                      "mediaCategory": "NONE",
+                                      "originalUrl": null,
+                                      "title": "Minha primeira publicação",
+                                      "status": "APPROVED",
+                                      "approvedAt": "2026-10-30T12:00:00Z",
+                                      "createdAt": "2026-10-30T11:55:00Z",
+                                      "updatedAt": "2026-10-30T12:00:00Z"
+                                    }
+                                    """))),
+            @ApiResponse(responseCode = "400", description = "UUID inválido no caminho da requisição.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "INVALID_REQUEST", value = """
+                                    {"code": "INVALID_REQUEST", "message": "Request validation failed."}
+                                    """))),
+            @ApiResponse(responseCode = "401", description = "Sessão local ausente ou expirada (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Token CSRF ausente ou expirado; execute GET /api/v1/auth/csrf e tente novamente (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Draft não encontrado para o usuário autenticado.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "DRAFT_NOT_FOUND", value = """
+                                    {"code": "DRAFT_NOT_FOUND", "message": "Draft was not found."}
+                                    """))),
+            @ApiResponse(responseCode = "409", description = "O draft não está mais em DRAFT (já aprovado ou publicado).",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "DRAFT_INVALID_STATE", value = """
+                                    {"code": "DRAFT_INVALID_STATE", "message": "Only a DRAFT can be approved."}
+                                    """)))
+    })
     public DraftResponse approve(
             @AuthenticationPrincipal AppUserPrincipal user,
+            @Parameter(description = "UUID real do draft em estado DRAFT retornado pelo POST ou GET /api/v1/drafts.", example = "5d2c1f0e-7a3b-4c9d-8e1f-2a3b4c5d6e7f")
             @PathVariable UUID id) {
         return toResponse(workflowService.approve(user.getId(), id));
     }
@@ -195,6 +322,7 @@ public class DraftController {
                                             """)
                             })),
             @ApiResponse(responseCode = "429", description = "Limite local de publicação excedido (RATE_LIMITED, com Retry-After) ou limite informado pelo LinkedIn (LINKEDIN_RATE_LIMITED, registrado como FAILED).",
+                    headers = @Header(name = "Retry-After", description = "Segundos restantes quando bloqueado pelo rate limit local.", schema = @Schema(type = "string", example = "60")),
                     content = @Content(mediaType = "application/json",
                             schema = @Schema(implementation = ApiError.class),
                             examples = {
@@ -219,6 +347,7 @@ public class DraftController {
                                                     """)
                             })),
             @ApiResponse(responseCode = "503", description = "Armazenamento de rate limiting indisponível no perfil prod (fail-closed).",
+                    headers = @Header(name = "Retry-After", description = "Segundos sugeridos antes de nova tentativa.", schema = @Schema(type = "string", example = "5")),
                     content = @Content(mediaType = "application/json",
                             schema = @Schema(implementation = ApiError.class),
                             examples = @ExampleObject(name = "RATE_LIMIT_UNAVAILABLE", value = """
@@ -284,7 +413,9 @@ public class DraftController {
     })
     public PublicationPageResponse listPublications(
             @AuthenticationPrincipal AppUserPrincipal user,
+            @Parameter(description = "Índice da página (base 0).", schema = @Schema(type = "integer", minimum = "0", defaultValue = "0"))
             @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Quantidade de itens por página (1 a 50).", schema = @Schema(type = "integer", minimum = "1", maximum = "50", defaultValue = "20"))
             @RequestParam(defaultValue = "20") int size) {
         if (page < 0 || size < 1 || size > 50) {
             throw new DraftWorkflowException("INVALID_PAGINATION",
@@ -318,8 +449,9 @@ public class DraftController {
                 .body(new ApiError(exception.getFailureCode(), "LinkedIn publication failed."));
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    ResponseEntity<ApiError> handleInvalidRequest(IllegalArgumentException exception) {
+    @ExceptionHandler({IllegalArgumentException.class, MethodArgumentNotValidException.class,
+            HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
+    ResponseEntity<ApiError> handleInvalidRequest(Exception exception) {
         return ResponseEntity.badRequest().body(new ApiError("INVALID_REQUEST", "Request validation failed."));
     }
 
@@ -336,6 +468,7 @@ public class DraftController {
                 publication.getPublishedAt(), publication.getCreatedAt());
     }
 
+    @Schema(description = "Dados para criação de um draft textual.")
     public record CreateDraftRequest(
             @NotBlank @Size(max = 3000)
             @Schema(description = "Texto que será publicado no LinkedIn.", example = "Minha primeira publicação pelo LinkedIn Integration Backend.")
@@ -351,6 +484,7 @@ public class DraftController {
             String title) {
     }
 
+    @Schema(description = "Dados para edição parcial de um draft ainda em estado DRAFT.")
     public record EditDraftRequest(
             @Size(max = 3000)
             @Schema(description = "Novo texto; omita para preservar o texto atual.", example = "Conteúdo atualizado")
@@ -366,10 +500,30 @@ public class DraftController {
             String title) {
     }
 
-    public record DraftResponse(UUID id, String text, String mediaCategory, String originalUrl, String title, String status,
-                                Instant approvedAt, Instant createdAt, Instant updatedAt) {
+    @Schema(description = "Rascunho textual pertencente ao usuário autenticado.")
+    public record DraftResponse(
+            @Schema(description = "UUID do draft.")
+            UUID id,
+            @Schema(description = "Texto do rascunho.", example = "Minha primeira publicação pelo LinkedIn Integration Backend.")
+            String text,
+            @Schema(description = "Categoria de mídia; nesta versão sempre NONE.", allowableValues = {"NONE"}, example = "NONE")
+            String mediaCategory,
+            @Schema(description = "URL de artigo externo; nulo enquanto mídia e artigos não estiverem habilitados.", nullable = true)
+            String originalUrl,
+            @Schema(description = "Título opcional do draft.", nullable = true, example = "Minha primeira publicação")
+            String title,
+            @Schema(description = "DRAFT: editável e aprovável. APPROVED: imutável e pronto para publicação. PUBLISHED: já publicado no LinkedIn.",
+                    allowableValues = {"DRAFT", "APPROVED", "PUBLISHED"}, example = "DRAFT")
+            String status,
+            @Schema(description = "Instante de aprovação em UTC; nulo enquanto o draft estiver em DRAFT.", nullable = true)
+            Instant approvedAt,
+            @Schema(description = "Instante de criação em UTC.")
+            Instant createdAt,
+            @Schema(description = "Instante da última alteração em UTC.")
+            Instant updatedAt) {
     }
 
+    @Schema(description = "Página de drafts pertencentes ao usuário autenticado.")
     public record DraftPageResponse(java.util.List<DraftResponse> content, int page, int size,
                                     long totalElements, int totalPages) {
     }

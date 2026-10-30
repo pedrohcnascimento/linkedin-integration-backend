@@ -1,14 +1,25 @@
 package com.example.linkedinagent;
 
+import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
+import java.util.LinkedHashSet;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -28,8 +39,15 @@ import static org.hamcrest.Matchers.hasItem;
 @ActiveProfiles("local")
 class ApiDocumentationLocalProfileTest {
 
+    private static final Set<String> HTTP_METHODS = Set.of(
+            "get", "post", "put", "patch", "delete", "head", "options", "trace");
+
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    @Qualifier("requestMappingHandlerMapping")
+    private RequestMappingHandlerMapping handlerMapping;
 
     @Test
     void apiDocumentationIsAvailableWithoutAuthenticationInLocalProfile() throws Exception {
@@ -147,6 +165,137 @@ class ApiDocumentationLocalProfileTest {
                 .andExpect(jsonPath("$.components.schemas.RegisterRequest.properties.password.minLength").value(12))
                 .andExpect(jsonPath("$.components.schemas.RegisterRequest.properties.password.maxLength").value(72))
                 .andExpect(jsonPath("$.components.schemas.UserResponse.properties.password").doesNotExist());
+    }
+
+    @Test
+    void openApiDocumentsLinkedInOAuthAndDraftLifecycleContracts() throws Exception {
+        String oauthStart = "$.paths['/api/v1/linkedin/oauth/start'].get";
+        String oauthCallback = "$.paths['/api/v1/linkedin/oauth/callback'].get";
+        String getConnection = "$.paths['/api/v1/linkedin/connection'].get";
+        String deleteConnection = "$.paths['/api/v1/linkedin/connection'].delete";
+        String createDraft = "$.paths['/api/v1/drafts'].post";
+        String listDrafts = "$.paths['/api/v1/drafts'].get";
+        String editDraft = "$.paths['/api/v1/drafts/{id}'].patch";
+        String approveDraft = "$.paths['/api/v1/drafts/{id}/approve'].post";
+
+        mockMvc.perform(get("/api-docs"))
+                .andExpect(status().isOk())
+                // LinkedIn OAuth start: 302 + Location header, sem 200 implícito
+                .andExpect(jsonPath(oauthStart + ".responses['200']").doesNotExist())
+                .andExpect(jsonPath(oauthStart + ".responses['302'].headers['Location']").exists())
+                .andExpect(jsonPath(oauthStart + ".responses['401']").exists())
+                .andExpect(jsonPath(oauthStart + ".responses['429'].headers['Retry-After']").exists())
+                .andExpect(jsonPath(oauthStart + ".responses['500'].content['application/json'].examples.LINKEDIN_CREDENTIAL_STORAGE_ERROR").exists())
+                .andExpect(jsonPath(oauthStart + ".responses['503'].content['application/json'].examples.LINKEDIN_OAUTH_NOT_CONFIGURED").exists())
+                .andExpect(jsonPath(oauthStart + ".responses['503'].content['application/json'].examples.RATE_LIMIT_UNAVAILABLE").exists())
+                // LinkedIn OAuth callback: ConnectionResponse explícito em 200 e códigos sanitizados
+                .andExpect(jsonPath(oauthCallback + ".parameters[?(@.name == 'code')]").isNotEmpty())
+                .andExpect(jsonPath(oauthCallback + ".parameters[?(@.name == 'state')]").isNotEmpty())
+                .andExpect(jsonPath(oauthCallback + ".parameters[?(@.name == 'error')]").isNotEmpty())
+                .andExpect(jsonPath(oauthCallback + ".responses['200'].content['application/json'].schema['$ref']",
+                        endsWith("/ConnectionResponse")))
+                .andExpect(jsonPath(oauthCallback + ".responses['400'].content['application/json'].examples.LINKEDIN_AUTHORIZATION_DENIED").exists())
+                .andExpect(jsonPath(oauthCallback + ".responses['400'].content['application/json'].examples.LINKEDIN_AUTHORIZATION_FAILED").exists())
+                .andExpect(jsonPath(oauthCallback + ".responses['429'].headers['Retry-After']").exists())
+                .andExpect(jsonPath(oauthCallback + ".responses['500'].content['application/json'].examples.LINKEDIN_CREDENTIAL_STORAGE_ERROR").exists())
+                .andExpect(jsonPath(oauthCallback + ".responses['502'].content['application/json'].examples.LINKEDIN_PROVIDER_ERROR").exists())
+                .andExpect(jsonPath(oauthCallback + ".responses['503'].content['application/json'].examples.LINKEDIN_OAUTH_NOT_CONFIGURED").exists())
+                // Conexão LinkedIn (GET + DELETE 204)
+                .andExpect(jsonPath(getConnection + ".responses['200'].content['application/json'].schema['$ref']",
+                        endsWith("/ConnectionResponse")))
+                .andExpect(jsonPath(getConnection + ".responses['200'].content['application/json'].examples.ACTIVE").exists())
+                .andExpect(jsonPath(getConnection + ".responses['200'].content['application/json'].examples.DISCONNECTED").exists())
+                .andExpect(jsonPath(getConnection + ".responses['401']").exists())
+                .andExpect(jsonPath(deleteConnection + ".responses['200']").doesNotExist())
+                .andExpect(jsonPath(deleteConnection + ".responses['204']").exists())
+                .andExpect(jsonPath(deleteConnection + ".responses['401']").exists())
+                .andExpect(jsonPath(deleteConnection + ".responses['403']").exists())
+                .andExpect(jsonPath("$.components.schemas.ConnectionResponse.properties.status.enum",
+                        containsInAnyOrder("ACTIVE", "EXPIRED", "DISCONNECTED")))
+                .andExpect(jsonPath("$.components.schemas.ConnectionResponse.properties.accessToken").doesNotExist())
+                .andExpect(jsonPath("$.components.schemas.ConnectionResponse.properties.refreshToken").doesNotExist())
+                // Criação, listagem paginada, edição e aprovação de drafts
+                .andExpect(jsonPath(createDraft + ".summary").isNotEmpty())
+                .andExpect(jsonPath(createDraft + ".responses['201'].content['application/json'].schema['$ref']",
+                        endsWith("/DraftResponse")))
+                .andExpect(jsonPath(createDraft + ".responses['400'].content['application/json'].examples.INVALID_REQUEST").exists())
+                .andExpect(jsonPath(createDraft + ".responses['400'].content['application/json'].examples.INVALID_DRAFT").exists())
+                .andExpect(jsonPath(createDraft + ".responses['422'].content['application/json'].examples.DRAFT_MEDIA_UNSUPPORTED").exists())
+                .andExpect(jsonPath(listDrafts + ".parameters[?(@.name == 'page')].schema.minimum").value(hasItem(0)))
+                .andExpect(jsonPath(listDrafts + ".parameters[?(@.name == 'size')].schema.minimum").value(hasItem(1)))
+                .andExpect(jsonPath(listDrafts + ".parameters[?(@.name == 'size')].schema.maximum").value(hasItem(50)))
+                .andExpect(jsonPath("$.paths['/api/v1/publications'].get.parameters[?(@.name == 'page')].schema.minimum").value(hasItem(0)))
+                .andExpect(jsonPath("$.paths['/api/v1/publications'].get.parameters[?(@.name == 'size')].schema.maximum").value(hasItem(50)))
+                .andExpect(jsonPath(listDrafts + ".responses['200'].content['application/json'].schema['$ref']",
+                        endsWith("/DraftPageResponse")))
+                .andExpect(jsonPath(listDrafts + ".responses['400'].content['application/json'].examples.INVALID_PAGINATION").exists())
+                .andExpect(jsonPath(listDrafts + ".responses['401']").exists())
+                .andExpect(jsonPath(editDraft + ".responses['200'].content['application/json'].schema['$ref']",
+                        endsWith("/DraftResponse")))
+                .andExpect(jsonPath(editDraft + ".responses['400'].content['application/json'].examples.INVALID_DRAFT_UPDATE").exists())
+                .andExpect(jsonPath(editDraft + ".responses['401']").exists())
+                .andExpect(jsonPath(editDraft + ".responses['404'].content['application/json'].examples.DRAFT_NOT_FOUND").exists())
+                .andExpect(jsonPath(editDraft + ".responses['409'].content['application/json'].examples.DRAFT_INVALID_STATE").exists())
+                .andExpect(jsonPath(editDraft + ".responses['422'].content['application/json'].examples.DRAFT_MEDIA_UNSUPPORTED").exists())
+                .andExpect(jsonPath(approveDraft + ".responses['200'].content['application/json'].schema['$ref']",
+                        endsWith("/DraftResponse")))
+                .andExpect(jsonPath(approveDraft + ".responses['401']").exists())
+                .andExpect(jsonPath(approveDraft + ".responses['403']").exists())
+                .andExpect(jsonPath(approveDraft + ".responses['404'].content['application/json'].examples.DRAFT_NOT_FOUND").exists())
+                .andExpect(jsonPath(approveDraft + ".responses['409'].content['application/json'].examples.DRAFT_INVALID_STATE").exists())
+                .andExpect(jsonPath("$.components.schemas.DraftResponse.properties.status.enum",
+                        containsInAnyOrder("DRAFT", "APPROVED", "PUBLISHED")));
+    }
+
+    @Test
+    void everyImplementedApiV1RouteIsPresentInOpenApiAndPlannedRoutesAreAbsent() throws Exception {
+        Set<String> runtimeOperations = new LinkedHashSet<>();
+        for (RequestMappingInfo mappingInfo : handlerMapping.getHandlerMethods().keySet()) {
+            Set<String> paths = mappingInfo.getPatternValues();
+            Set<RequestMethod> methods = mappingInfo.getMethodsCondition().getMethods();
+            for (String path : paths) {
+                if (path.startsWith("/api/v1")) {
+                    for (RequestMethod method : methods) {
+                        runtimeOperations.add(method.name() + " " + path);
+                    }
+                }
+            }
+        }
+        // Logout é atendido pelo LogoutFilter configurado em SecurityConfig, não por @RequestMapping.
+        runtimeOperations.add("POST /api/v1/auth/logout");
+
+        String apiDocsJson = mockMvc.perform(get("/api-docs"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Map<String, Map<String, Object>> documentedPaths = JsonPath.read(apiDocsJson, "$.paths");
+        Set<String> documentedOperations = new LinkedHashSet<>();
+        for (Map.Entry<String, Map<String, Object>> pathEntry : documentedPaths.entrySet()) {
+            String path = pathEntry.getKey();
+            if (!path.startsWith("/api/v1")) {
+                continue;
+            }
+            for (Map.Entry<String, Object> methodEntry : pathEntry.getValue().entrySet()) {
+                String method = methodEntry.getKey().toLowerCase(Locale.ROOT);
+                if (HTTP_METHODS.contains(method)) {
+                    documentedOperations.add(method.toUpperCase(Locale.ROOT) + " " + path);
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> operation = (Map<String, Object>) methodEntry.getValue();
+                    assertThat(operation.get("summary"))
+                            .as("summary of %s %s", method.toUpperCase(Locale.ROOT), path)
+                            .isInstanceOf(String.class)
+                            .asString()
+                            .isNotBlank();
+                }
+            }
+        }
+
+        assertThat(runtimeOperations).hasSize(15);
+        assertThat(documentedOperations).containsExactlyInAnyOrderElementsOf(runtimeOperations);
+        assertThat(documentedOperations).doesNotContain("GET /api/v1/drafts/{id}");
+        assertThat(documentedPaths.keySet()).noneMatch(path -> path.startsWith("/api/v1/opportunities"));
     }
 
     @Test

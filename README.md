@@ -6,7 +6,7 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-🚧 **Passo 12 — API REST e contrato OpenAPI (entrega 1)** em andamento; **Passo 11 (oportunidades/vagas)** formalmente adiado para ciclo posterior ([`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)). OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação, publicação idempotente via Posts API e histórico paginado por usuário. Reservas são persistidas antes da chamada externa; resultados ambíguos bloqueiam novas tentativas até reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md)). A validação de concorrência em Oracle descartável do Passo 10 permanece pendente de infraestrutura. Veja [`docs/status-atual.md`](docs/status-atual.md).
+✅ **Passo 12 — API REST e contrato OpenAPI concluído** ([`docs/progress/STEP-12.md`](docs/progress/STEP-12.md)); próxima etapa do roteiro: **Passo 13 — Completar testes automatizados**. **Passo 11 (oportunidades/vagas)** permanece formalmente adiado para ciclo posterior ([`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)). OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação, publicação idempotente via Posts API e histórico paginado por usuário, com contrato OpenAPI verificado automaticamente contra todas as rotas `/api/v1/**` (e desativado em `prod`). Reservas são persistidas antes da chamada externa; resultados ambíguos bloqueiam novas tentativas até reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md)). A validação de concorrência em Oracle descartável do Passo 10 permanece pendente de infraestrutura. Veja [`docs/status-atual.md`](docs/status-atual.md).
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) e o roteiro, incluindo os próximos passos, em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
@@ -44,7 +44,7 @@ Essas funcionalidades são expostas pelos endpoints listados abaixo e cobertas p
 
 ### Em andamento / planejado
 
-- **Passo 12 (em andamento):** revisão final do contrato OpenAPI para `LinkedInOAuthController` e para criação/listagem/edição/aprovação em `DraftController` (Entrega 2); a fatia de autenticação/sessão/logout e publicação/histórico já está concluída.
+- **Passo 13 (próxima etapa):** revisar e completar a cobertura de testes automatizados nas camadas unitária, HTTP/MockMvc e integração SQLite (migrations, isolamento, sessão/segurança e falhas externas).
 - **Passo 10 (pendência de infraestrutura):** validação em Oracle descartável das migrations, do schema e da concorrência; a configuração atual não comprova compatibilidade operacional.
 - **Passo 11 (adiado para ciclo posterior):** registro local de oportunidades e integração com fontes externas autorizadas de vagas não serão implementados neste momento (ver [`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)).
 
@@ -84,7 +84,7 @@ Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem 
 
 ## Próximos passos
 
-1. Concluir a Entrega 2 do Passo 12: fechar schemas, headers e exemplos OpenAPI de `LinkedInOAuthController` e dos endpoints de criação/listagem/edição/aprovação de `DraftController`, com verificação automatizada de paridade de rotas (ver [`docs/progress/STEP-12.md`](docs/progress/STEP-12.md)).
+1. Executar o **Passo 13 — Completar testes automatizados**, consolidando a cobertura unitária, HTTP/MockMvc e de persistência/migrations, seguido do Passo 14 (segurança, retenção/LGPD técnica e observabilidade).
 2. Validar concorrência, migrations e schema em Oracle descartável (pendência remanescente do Passo 10) assim que houver instância Oracle disponível, além de confirmar JDK 21, Redis e IP atrás do proxy antes de exposição pública.
 3. Somente em ciclo posterior à estabilização da v1, retomar o Passo 11 (oportunidades locais e fontes externas autorizadas de vagas — ver [`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)).
 

@@ -10,6 +10,13 @@ import com.example.linkedinagent.exception.TokenEncryptionException;
 import com.example.linkedinagent.application.ratelimit.RateLimitService;
 import jakarta.servlet.http.HttpServletRequest;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.headers.Header;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -50,6 +57,40 @@ public class LinkedInOAuthController {
 
             Pré-requisitos no perfil local: `TOKEN_ENCRYPTION_KEY` configurada, redirect URI `http://localhost:8080/api/v1/linkedin/oauth/callback` cadastrada exatamente no Developer Portal e os produtos **Sign In with LinkedIn using OpenID Connect** e **Share on LinkedIn** habilitados.
             """)
+    @ApiResponses({
+            @ApiResponse(responseCode = "302", description = "Redirecionamento para a tela oficial de autorização OAuth 2.0 do LinkedIn (sem corpo).",
+                    headers = @Header(name = "Location",
+                            description = "URL completa de autorização do LinkedIn com client_id, redirect_uri, state de uso único e scopes.",
+                            schema = @Schema(type = "string", format = "uri",
+                                    example = "https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=example-client-id&redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fapi%2Fv1%2Flinkedin%2Foauth%2Fcallback&state=example-state&scope=openid%20profile%20w_member_social")),
+                    content = @Content),
+            @ApiResponse(responseCode = "401", description = "Sessão local ausente ou expirada (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "429", description = "Limite de inícios de OAuth excedido por IP (30/15min), conta (10/1h) ou sessão (8/15min).",
+                    headers = @Header(name = "Retry-After", description = "Segundos restantes até nova tentativa.", schema = @Schema(type = "string", example = "60")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "RATE_LIMITED", value = """
+                                    {"code": "RATE_LIMITED", "message": "Too many requests. Please retry later."}
+                                    """))),
+            @ApiResponse(responseCode = "500", description = "Chave de cifragem de tokens (TOKEN_ENCRYPTION_KEY) ausente ou inválida.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "LINKEDIN_CREDENTIAL_STORAGE_ERROR", value = """
+                                    {"code": "LINKEDIN_CREDENTIAL_STORAGE_ERROR", "message": "LinkedIn credentials could not be stored securely."}
+                                    """))),
+            @ApiResponse(responseCode = "503", description = "Configuração OAuth do LinkedIn ausente/inválida ou armazenamento de rate limiting indisponível no perfil prod (fail-closed).",
+                    headers = @Header(name = "Retry-After", description = "Segundos sugeridos antes de nova tentativa quando o rate limiting estiver indisponível.", schema = @Schema(type = "string", example = "5")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = {
+                                    @ExampleObject(name = "LINKEDIN_OAUTH_NOT_CONFIGURED", value = """
+                                            {"code": "LINKEDIN_OAUTH_NOT_CONFIGURED", "message": "LinkedIn authorization is not configured."}
+                                            """),
+                                    @ExampleObject(name = "RATE_LIMIT_UNAVAILABLE", value = """
+                                            {"code": "RATE_LIMIT_UNAVAILABLE", "message": "Requests are temporarily unavailable."}
+                                            """)
+                            }))
+    })
     public ResponseEntity<Void> start(
             @AuthenticationPrincipal AppUserPrincipal user,
             HttpServletRequest request) {
@@ -73,9 +114,69 @@ public class LinkedInOAuthController {
 
             O `state` é consumido antes da troca do código e das chamadas externas. Se troca, consulta de identidade, cifragem ou persistência falhar, o mesmo callback não pode ser repetido; inicie um novo fluxo OAuth. Isso evita reutilizar `state` ou código de autorização potencialmente comprometido.
             """)
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Autorização concluída; tokens cifrados localmente e estado sanitizado retornado.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ConnectionResponse.class),
+                            examples = @ExampleObject(name = "Conexão ativa", value = """
+                                    {
+                                      "connected": true,
+                                      "status": "ACTIVE",
+                                      "memberSubject": "yrZCpj2Z12",
+                                      "scopes": "openid profile w_member_social",
+                                      "expiresAt": "2026-12-29T12:00:00Z",
+                                      "connectedAt": "2026-10-30T12:00:00Z"
+                                    }
+                                    """))),
+            @ApiResponse(responseCode = "400", description = "Autorização negada no LinkedIn ou state/code ausente, expirado, reutilizado ou inválido.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = {
+                                    @ExampleObject(name = "LINKEDIN_AUTHORIZATION_DENIED", value = """
+                                            {"code": "LINKEDIN_AUTHORIZATION_DENIED", "message": "LinkedIn authorization was not completed."}
+                                            """),
+                                    @ExampleObject(name = "LINKEDIN_AUTHORIZATION_FAILED", value = """
+                                            {"code": "LINKEDIN_AUTHORIZATION_FAILED", "message": "OAuth state is missing, expired, or already used."}
+                                            """)
+                            })),
+            @ApiResponse(responseCode = "429", description = "Limite de callbacks excedido por IP (60/15min) ou state (6/15min).",
+                    headers = @Header(name = "Retry-After", description = "Segundos restantes até nova tentativa.", schema = @Schema(type = "string", example = "60")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "RATE_LIMITED", value = """
+                                    {"code": "RATE_LIMITED", "message": "Too many requests. Please retry later."}
+                                    """))),
+            @ApiResponse(responseCode = "500", description = "Falha ao cifrar ou armazenar as credenciais do LinkedIn.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "LINKEDIN_CREDENTIAL_STORAGE_ERROR", value = """
+                                    {"code": "LINKEDIN_CREDENTIAL_STORAGE_ERROR", "message": "LinkedIn credentials could not be stored securely."}
+                                    """))),
+            @ApiResponse(responseCode = "502", description = "Falha na troca do código ou na consulta UserInfo junto ao provedor LinkedIn.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "LINKEDIN_PROVIDER_ERROR", value = """
+                                    {"code": "LINKEDIN_PROVIDER_ERROR", "message": "LinkedIn provider request failed."}
+                                    """))),
+            @ApiResponse(responseCode = "503", description = "Configuração OAuth do LinkedIn ausente/inválida ou armazenamento de rate limiting indisponível no perfil prod (fail-closed).",
+                    headers = @Header(name = "Retry-After", description = "Segundos sugeridos antes de nova tentativa quando o rate limiting estiver indisponível.", schema = @Schema(type = "string", example = "5")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = {
+                                    @ExampleObject(name = "LINKEDIN_OAUTH_NOT_CONFIGURED", value = """
+                                            {"code": "LINKEDIN_OAUTH_NOT_CONFIGURED", "message": "LinkedIn authorization is not configured."}
+                                            """),
+                                    @ExampleObject(name = "RATE_LIMIT_UNAVAILABLE", value = """
+                                            {"code": "RATE_LIMIT_UNAVAILABLE", "message": "Requests are temporarily unavailable."}
+                                            """)
+                            }))
+    })
     public ResponseEntity<?> callback(
+            @Parameter(description = "Código de autorização de uso único enviado pelo LinkedIn em caso de aprovação.")
             @RequestParam(required = false) String code,
+            @Parameter(description = "State criptográfico gerado em GET /api/v1/linkedin/oauth/start; expira em 10 minutos e é consumido uma única vez.")
             @RequestParam(required = false) String state,
+            @Parameter(description = "Código de recusa/erro enviado pelo LinkedIn quando o membro cancela ou nega a autorização.")
             @RequestParam(required = false) String error,
             HttpServletRequest request) {
         List<RateLimitService.Limit> limits = new ArrayList<>();
@@ -98,6 +199,34 @@ public class LinkedInOAuthController {
 
     @GetMapping("/connection")
     @Operation(summary = "Consultar conexão atual", description = "Execute depois que o callback terminar. `connected: true` e `status: ACTIVE` confirmam que o OAuth foi concluído. `DISCONNECTED` significa que ainda não houve uma autorização concluída para o usuário local autenticado.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Estado sanitizado da conexão LinkedIn do usuário autenticado (nunca expõe tokens).",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ConnectionResponse.class),
+                            examples = {
+                                    @ExampleObject(name = "ACTIVE", value = """
+                                            {
+                                              "connected": true,
+                                              "status": "ACTIVE",
+                                              "memberSubject": "yrZCpj2Z12",
+                                              "scopes": "openid profile w_member_social",
+                                              "expiresAt": "2026-12-29T12:00:00Z",
+                                              "connectedAt": "2026-10-30T12:00:00Z"
+                                            }
+                                            """),
+                                    @ExampleObject(name = "DISCONNECTED", value = """
+                                            {
+                                              "connected": false,
+                                              "status": "DISCONNECTED",
+                                              "memberSubject": null,
+                                              "scopes": null,
+                                              "expiresAt": null,
+                                              "connectedAt": null
+                                            }
+                                            """)
+                            })),
+            @ApiResponse(responseCode = "401", description = "Sessão local ausente ou expirada (sem corpo).", content = @Content)
+    })
     public ConnectionResponse connection(@AuthenticationPrincipal AppUserPrincipal user) {
         return oauthService.connection(user.getId())
                 .map(ConnectionResponse::from)
@@ -106,6 +235,11 @@ public class LinkedInOAuthController {
 
     @DeleteMapping("/connection")
     @Operation(summary = "Desconectar LinkedIn", description = "Remove localmente a autorização armazenada para o usuário autenticado. Exige sessão local e CSRF. Esta operação não afirma revogação remota no LinkedIn.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Autorização local e estados OAuth pendentes removidos (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "401", description = "Sessão local ausente ou expirada (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Token CSRF ausente ou inválido; execute GET /api/v1/auth/csrf e tente novamente (sem corpo).", content = @Content)
+    })
     public ResponseEntity<Void> disconnect(@AuthenticationPrincipal AppUserPrincipal user) {
         oauthService.disconnect(user.getId());
         return ResponseEntity.noContent().build();
@@ -137,12 +271,20 @@ public class LinkedInOAuthController {
                         "LinkedIn authorization is not configured."));
     }
 
+    @Schema(description = "Estado sanitizado da conexão OAuth 2.0 com o LinkedIn (nunca contém access_token ou refresh_token).")
     public record ConnectionResponse(
+            @Schema(description = "Indica se existe autorização registrada para o usuário local (true para ACTIVE ou EXPIRED; false para DISCONNECTED).", example = "true")
             boolean connected,
+            @Schema(description = "ACTIVE: autorização válida. EXPIRED: autorização registrada com expiresAt vencido; reconecte via OAuth. DISCONNECTED: nenhuma autorização armazenada.",
+                    allowableValues = {"ACTIVE", "EXPIRED", "DISCONNECTED"}, example = "ACTIVE")
             String status,
+            @Schema(description = "Identificador OIDC (sub) do membro no LinkedIn; nulo em DISCONNECTED.", nullable = true, example = "yrZCpj2Z12")
             String memberSubject,
+            @Schema(description = "Escopos OAuth concedidos; nulo em DISCONNECTED.", nullable = true, example = "openid profile w_member_social")
             String scopes,
+            @Schema(description = "Instante de expiração do access token em UTC; nulo em DISCONNECTED.", nullable = true)
             Instant expiresAt,
+            @Schema(description = "Instante em que a conexão atual foi autorizada em UTC; nulo em DISCONNECTED.", nullable = true)
             Instant connectedAt) {
 
         private static ConnectionResponse from(LinkedInConnection connection) {

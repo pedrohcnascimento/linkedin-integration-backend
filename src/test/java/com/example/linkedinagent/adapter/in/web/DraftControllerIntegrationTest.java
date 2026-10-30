@@ -467,6 +467,57 @@ class DraftControllerIntegrationTest {
                 .andExpect(jsonPath("$.code").value("INVALID_PAGINATION"));
     }
 
+    @Test
+    void malformedJsonBeanValidationAndTypeMismatchReturnSanitizedApiError() throws Exception {
+        MockHttpSession session = loginAndRegister();
+        UUID draftId = createDraft(session);
+
+        mockMvc.perform(post("/api/v1/drafts")
+                        .session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Request validation failed."));
+
+        mockMvc.perform(post("/api/v1/drafts")
+                        .session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"   \",\"mediaCategory\":\"NONE\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Request validation failed."));
+
+        mockMvc.perform(patch("/api/v1/drafts/{id}", draftId)
+                        .session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{malformed"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Request validation failed."));
+
+        mockMvc.perform(patch("/api/v1/drafts/{id}", draftId)
+                        .session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"" + "a".repeat(301) + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Request validation failed."));
+
+        mockMvc.perform(patch("/api/v1/drafts/not-a-uuid")
+                        .session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"Valid text\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Request validation failed."));
+
+        mockMvc.perform(get("/api/v1/drafts").session(session).param("size", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Request validation failed."));
+    }
+
     private void publishDraft(MockHttpSession session, UUID draftId, String idempotencyKey) throws Exception {
         mockMvc.perform(post("/api/v1/drafts/{id}/approve", draftId)
                         .session(session).with(csrf()))
