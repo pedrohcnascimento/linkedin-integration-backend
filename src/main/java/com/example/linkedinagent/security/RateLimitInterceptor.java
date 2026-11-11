@@ -11,21 +11,29 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class RateLimitInterceptor implements HandlerInterceptor {
 
     private static final Duration FIFTEEN_MINUTES = Duration.ofMinutes(15);
     private static final Duration ONE_HOUR = Duration.ofHours(1);
     private static final Map<String, IpPolicy> POLICIES = Map.of(
+            "GET /api/v1/auth/csrf", new IpPolicy("auth-csrf", 30, FIFTEEN_MINUTES),
             "POST /api/v1/auth/login", new IpPolicy("auth-login", 30, FIFTEEN_MINUTES),
             "POST /api/v1/auth/register", new IpPolicy("auth-register", 10, ONE_HOUR),
             "GET /api/v1/linkedin/oauth/start", new IpPolicy("oauth-start", 30, FIFTEEN_MINUTES),
             "GET /api/v1/linkedin/oauth/callback", new IpPolicy("oauth-callback", 60, FIFTEEN_MINUTES));
 
     private final RateLimitService rateLimitService;
+    private final Set<String> trustedProxyIps;
 
     public RateLimitInterceptor(RateLimitService rateLimitService) {
+        this(rateLimitService, Set.of());
+    }
+
+    public RateLimitInterceptor(RateLimitService rateLimitService, Set<String> trustedProxyIps) {
         this.rateLimitService = rateLimitService;
+        this.trustedProxyIps = trustedProxyIps == null ? Set.of() : Set.copyOf(trustedProxyIps);
     }
 
     @Override
@@ -93,8 +101,30 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     }
 
     private String clientAddress(HttpServletRequest request) {
+        return resolveClientAddress(request, trustedProxyIps);
+    }
+
+    public static String resolveClientAddress(HttpServletRequest request, Set<String> trustedProxyIps) {
         String remoteAddress = request.getRemoteAddr();
-        return remoteAddress == null || remoteAddress.isBlank() ? "unknown" : remoteAddress;
+        if (remoteAddress == null || remoteAddress.isBlank()) {
+            return "unknown";
+        }
+        String trimmedRemote = remoteAddress.trim();
+        if (trustedProxyIps == null || trustedProxyIps.isEmpty() || !trustedProxyIps.contains(trimmedRemote)) {
+            return trimmedRemote;
+        }
+        String forwardedFor = request.getHeader("X-Forwarded-For");
+        if (forwardedFor == null || forwardedFor.isBlank()) {
+            return trimmedRemote;
+        }
+        String[] hops = forwardedFor.split(",", -1);
+        for (int index = hops.length - 1; index >= 0; index--) {
+            String candidate = hops[index].trim();
+            if (!candidate.isEmpty() && !trustedProxyIps.contains(candidate)) {
+                return candidate;
+            }
+        }
+        return trimmedRemote;
     }
 
     private record IpPolicy(String scope, int maximumRequests, Duration window) {

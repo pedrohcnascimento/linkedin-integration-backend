@@ -4,8 +4,12 @@ import com.example.linkedinagent.domain.RateLimitBucket;
 import com.example.linkedinagent.exception.RateLimitExceededException;
 import com.example.linkedinagent.exception.RateLimitStoreUnavailableException;
 import com.example.linkedinagent.repository.RateLimitStore;
+import com.example.linkedinagent.security.AesGcmTokenCipher;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +33,22 @@ public class RateLimitService {
     public RateLimitService(
             @Qualifier("rateLimitStore") RateLimitStore store,
             @Value("${app.rate-limit.hmac-key}") String encodedHmacKey) {
+        this(store, encodedHmacKey, true);
+    }
+
+    @Autowired
+    public RateLimitService(
+            @Qualifier("rateLimitStore") RateLimitStore store,
+            @Value("${app.rate-limit.hmac-key}") String encodedHmacKey,
+            Environment environment) {
+        this(store, encodedHmacKey,
+                environment == null || !environment.acceptsProfiles(Profiles.of("local | test")));
+    }
+
+    RateLimitService(
+            RateLimitStore store,
+            String encodedHmacKey,
+            boolean rejectWeakKeys) {
         this.store = store;
         try {
             this.hmacKey = Base64.getDecoder().decode(encodedHmacKey);
@@ -37,6 +57,9 @@ public class RateLimitService {
         }
         if (hmacKey.length < 32) {
             throw new IllegalStateException("Rate limit HMAC key must contain at least 32 bytes.");
+        }
+        if (rejectWeakKeys && AesGcmTokenCipher.isWeakKey(hmacKey)) {
+            throw new IllegalStateException("Rate limit HMAC key is too weak; generate at least 32 random bytes.");
         }
     }
 

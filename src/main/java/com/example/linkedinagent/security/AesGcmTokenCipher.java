@@ -2,6 +2,9 @@ package com.example.linkedinagent.security;
 
 import com.example.linkedinagent.config.AppProperties;
 import com.example.linkedinagent.exception.TokenEncryptionException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.Cipher;
@@ -12,6 +15,8 @@ import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.HashSet;
+import java.util.Set;
 
 @Component
 public class AesGcmTokenCipher implements TokenCipher {
@@ -20,12 +25,21 @@ public class AesGcmTokenCipher implements TokenCipher {
     private static final int NONCE_LENGTH_BYTES = 12;
     private static final int TAG_LENGTH_BITS = 128;
     private static final int AES_KEY_LENGTH_BYTES = 32;
+    private static final int MIN_DISTINCT_BYTES = 8;
 
     private final AppProperties.Security properties;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public AesGcmTokenCipher(AppProperties appProperties) {
         this.properties = appProperties.getSecurity();
+    }
+
+    @Autowired
+    public AesGcmTokenCipher(AppProperties appProperties, Environment environment) {
+        this(appProperties);
+        if (environment != null && !environment.acceptsProfiles(Profiles.of("local"))) {
+            validateConfiguration();
+        }
     }
 
     @Override
@@ -100,8 +114,20 @@ public class AesGcmTokenCipher implements TokenCipher {
             Arrays.fill(decodedKey, (byte) 0);
             throw new TokenEncryptionException("LinkedIn token encryption key must decode to exactly 32 bytes.");
         }
+        if (isWeakKey(decodedKey)) {
+            Arrays.fill(decodedKey, (byte) 0);
+            throw new TokenEncryptionException("LinkedIn token encryption key is too weak; generate 32 random bytes.");
+        }
         SecretKeySpec key = new SecretKeySpec(decodedKey, "AES");
         Arrays.fill(decodedKey, (byte) 0);
         return key;
+    }
+
+    public static boolean isWeakKey(byte[] keyBytes) {
+        Set<Byte> distinctBytes = new HashSet<>();
+        for (byte value : keyBytes) {
+            distinctBytes.add(value);
+        }
+        return distinctBytes.size() < MIN_DISTINCT_BYTES;
     }
 }

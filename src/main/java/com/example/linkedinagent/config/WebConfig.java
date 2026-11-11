@@ -13,6 +13,8 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
@@ -55,6 +57,16 @@ public class WebConfig implements WebMvcConfigurer {
         return origins;
     }
 
+    public static Set<String> parseTrustedProxyIps(String configuredProxyIps) {
+        if (!StringUtils.hasText(configuredProxyIps)) {
+            return Set.of();
+        }
+        return Arrays.stream(configuredProxyIps.split(",", -1))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
     private static boolean isValidOrigin(String origin) {
         if ("*".equals(origin)) {
             return false;
@@ -75,8 +87,10 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(@NonNull InterceptorRegistry registry) {
-        registry.addInterceptor(new RateLimitInterceptor(rateLimitService))
+        Set<String> trustedProxyIps = parseTrustedProxyIps(appProperties.getSecurity().getTrustedProxyIps());
+        registry.addInterceptor(new RateLimitInterceptor(rateLimitService, trustedProxyIps))
                 .addPathPatterns(
+                        "/api/v1/auth/csrf",
                         "/api/v1/auth/login",
                         "/api/v1/auth/register",
                         "/api/v1/linkedin/oauth/start",

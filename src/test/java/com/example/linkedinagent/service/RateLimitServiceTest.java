@@ -64,6 +64,10 @@ class RateLimitServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Rate limit HMAC key must contain at least 32 bytes.");
 
+        assertThatThrownBy(() -> new RateLimitService(store, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Rate limit HMAC key is too weak; generate at least 32 random bytes.");
+
         RateLimitService service = new RateLimitService(store, VALID_HMAC_KEY);
         assertThatThrownBy(() -> service.check("auth-login", List.of(
                 new RateLimitService.Limit("ip", " ", 10, Duration.ofMinutes(1)))))

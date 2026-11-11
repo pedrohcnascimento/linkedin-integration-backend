@@ -1,8 +1,11 @@
 package com.example.linkedinagent.config;
 
+import com.example.linkedinagent.security.RateLimitInterceptor;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
@@ -26,5 +29,22 @@ class WebConfigTest {
                 .isThrownBy(() -> WebConfig.parseAllowedOrigins("*"));
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> WebConfig.parseAllowedOrigins("https://app.example.com/private"));
+    }
+
+    @Test
+    void resolvesClientIpFromXForwardedForOnlyWhenRemoteAddrIsConfiguredAsTrustedProxy() {
+        Set<String> trustedProxies = WebConfig.parseTrustedProxyIps("10.0.0.1, 10.0.0.2 ");
+
+        MockHttpServletRequest untrustedDirectRequest = new MockHttpServletRequest();
+        untrustedDirectRequest.setRemoteAddr("198.51.100.50");
+        untrustedDirectRequest.addHeader("X-Forwarded-For", "203.0.113.9");
+        assertThat(RateLimitInterceptor.resolveClientAddress(untrustedDirectRequest, trustedProxies))
+                .isEqualTo("198.51.100.50");
+
+        MockHttpServletRequest trustedProxyRequestWithSpoofedPrefix = new MockHttpServletRequest();
+        trustedProxyRequestWithSpoofedPrefix.setRemoteAddr("10.0.0.1");
+        trustedProxyRequestWithSpoofedPrefix.addHeader("X-Forwarded-For", "192.0.2.99, 203.0.113.44, 10.0.0.2");
+        assertThat(RateLimitInterceptor.resolveClientAddress(trustedProxyRequestWithSpoofedPrefix, trustedProxies))
+                .isEqualTo("203.0.113.44");
     }
 }

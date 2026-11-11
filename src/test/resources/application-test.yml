@@ -32,8 +32,8 @@ app:
     redirect-uri: "http://localhost:8080/api/v1/linkedin/oauth/callback"
     scopes: "openid profile w_member_social"
   security:
-    token-encryption-key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    token-encryption-key: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
     cors-allowed-origins: "http://localhost:5173, http://localhost:5174"
   rate-limit:
-    hmac-key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    hmac-key: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
   base-url: "http://localhost:8080"

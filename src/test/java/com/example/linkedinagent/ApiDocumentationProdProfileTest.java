@@ -9,6 +9,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -23,9 +24,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "app.linkedin.client-id=prod-profile-test",
         "app.linkedin.client-secret=prod-profile-test",
         "app.linkedin.redirect-uri=https://localhost/api/v1/linkedin/oauth/callback",
-        "app.security.token-encryption-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "app.security.token-encryption-key=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
         "app.security.cors-allowed-origins=https://localhost",
-        "app.rate-limit.hmac-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "app.rate-limit.hmac-key=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
         "app.base-url=https://localhost"
 })
 @AutoConfigureMockMvc
@@ -41,10 +42,17 @@ class ApiDocumentationProdProfileTest {
     @Test
     void apiDocumentationEndpointsAreNotAvailableInProdProfile() throws Exception {
         mockMvc.perform(get("/api-docs"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/swagger-ui.html"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/swagger-ui/index.html"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api-docs").with(user("prod-user")))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/swagger-ui.html").with(user("prod-user")))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/swagger-ui/index.html").with(user("prod-user")))
                 .andExpect(status().isNotFound());
     }
 }

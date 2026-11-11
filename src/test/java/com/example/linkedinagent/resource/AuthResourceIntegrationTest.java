@@ -1,9 +1,11 @@
 package com.example.linkedinagent.resource;
 
 import com.example.linkedinagent.client.LinkedInOAuthClient;
+import com.example.linkedinagent.domain.RateLimitBucket;
 import com.example.linkedinagent.exception.LinkedInProviderException;
 import com.example.linkedinagent.repository.RateLimitStore;
 import com.jayway.jsonpath.JsonPath;
+import jakarta.servlet.http.Cookie;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -222,25 +224,89 @@ class AuthResourceIntegrationTest {
     }
 
     @Test
-    void csrfEndpointReturnsUsableTokenForStateChangingRequest() throws Exception {
-        MvcResult csrfResponse = mockMvc.perform(get("/api/v1/auth/csrf"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.headerName").isNotEmpty())
-                .andExpect(jsonPath("$.token").isNotEmpty())
-                .andReturn();
+    void csrfEndpointReturnsUsableTokenWithoutAllocatingSessionForUnauthenticatedCallers() throws Exception {
+        MvcResult csrfResponse = null;
+        for (int attempt = 0; attempt < 10; attempt++) {
+            csrfResponse = mockMvc.perform(get("/api/v1/auth/csrf"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.headerName").isNotEmpty())
+                    .andExpect(jsonPath("$.token").isNotEmpty())
+                    .andReturn();
+            assertThat(csrfResponse.getRequest().getSession(false)).isNull();
+        }
         String csrfBody = csrfResponse.getResponse().getContentAsString();
         String headerName = JsonPath.read(csrfBody, "$.headerName");
         String token = JsonPath.read(csrfBody, "$.token");
-        MockHttpSession session = (MockHttpSession) csrfResponse.getRequest().getSession(false);
+        Cookie csrfCookie = csrfResponse.getResponse().getCookie("XSRF-TOKEN");
+        assertThat(csrfCookie).isNotNull();
+        assertThat(csrfCookie.isHttpOnly()).isTrue();
 
         mockMvc.perform(post("/api/v1/auth/register")
-                        .session(session)
+                        .cookie(csrfCookie)
                         .header(headerName, token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"email":"%s","displayName":"Test User","password":"%s"}
                                 """.formatted(UUID.randomUUID() + "@example.com", PASSWORD)))
                 .andExpect(status().isCreated());
+    }
+
+    @Test
+    void failedLoginsRateLimitOnlyTheOffendingAccountIpAndDoNotLockOutValidCredentials() throws Exception {
+        String email = UUID.randomUUID() + "@example.com";
+        register(email);
+
+        java.util.concurrent.atomic.AtomicInteger accountIpFailures = new java.util.concurrent.atomic.AtomicInteger();
+        when(rateLimitStore.acquire(anyList())).thenAnswer(invocation -> {
+            java.util.List<RateLimitBucket> buckets = invocation.getArgument(0);
+            boolean isAccountIpCheck = buckets.stream()
+                    .anyMatch(bucket -> bucket.dimension().equals("account-ip"));
+            if (isAccountIpCheck && accountIpFailures.incrementAndGet() > 8) {
+                return Optional.of( java.time.Duration.ofSeconds(45));
+            }
+            return Optional.empty();
+        });
+
+        for (int attempt = 0; attempt < 8; attempt++) {
+            mockMvc.perform(post("/api/v1/auth/login")
+                            .with(csrf())
+                            .with(request -> {
+                                request.setRemoteAddr("198.51.100.77");
+                                return request;
+                            })
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"email":"%s","password":"wrong-password-123"}
+                                    """.formatted(email)))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("AUTHENTICATION_FAILED"));
+        }
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .with(request -> {
+                            request.setRemoteAddr("198.51.100.77");
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"%s","password":"wrong-password-123"}
+                                """.formatted(email)))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .with(request -> {
+                            request.setRemoteAddr("198.51.100.77");
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"%s","password":"%s"}
+                                """.formatted(email, PASSWORD)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email));
     }
 
     @Test

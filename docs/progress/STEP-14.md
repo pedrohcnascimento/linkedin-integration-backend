@@ -53,6 +53,51 @@ Executar e consolidar o **Passo 14 — Aplicar segurança, LGPD técnica e obser
   - Adicionado `@ExceptionHandler(RuntimeException.class)` em `GlobalExceptionHandler` preservando exceções do Spring (`ErrorResponse`, `AccessDeniedException`, `AuthenticationException`) e convertendo falhas inesperadas em `500 INTERNAL_ERROR` (`{"code": "INTERNAL_ERROR", "message": "An unexpected error occurred."}`) sem stack trace ou segredos.
 - **Regression test:** `SecurityObservabilityAndLgpdIntegrationTest.emitsRequestCorrelationHeaderSecurityHeadersAndRestrictsActuatorExposure` e `SecurityObservabilityAndLgpdIntegrationTest.globalExceptionHandlerSanitizesUnexpectedRuntimeExceptionsAndRethrowsSecurityExceptions`.
 
+### FINDING-05 — Perfil padrão inseguro (`local`) e rotas Swagger/OpenAPI sempre `permitAll()` (`CONFIG-01`, Caso E §6.1)
+- **ID:** `FINDING-05` (`CONFIG-01`)
+- **Severity:** Medium
+- **Status:** `FIXED`
+- **Affected component/route:** `src/main/resources/application.yml`, `SecurityConfig`, `.env.example`
+- **Evidence:** `application.yml` definia `spring.profiles.active: ${SPRING_PROFILES_ACTIVE:local}` e `SecurityConfig` liberava `/api-docs/**`, `/swagger-ui/**` e `/swagger-ui.html` em todos os perfis. Se um deploy esquecesse `SPRING_PROFILES_ACTIVE`, subiria como `local` com Swagger aberto, cookie CSRF sem `HttpOnly`, cookie de sessão sem `Secure` e rate limiter em memória.
+- **Remediation:** Alterado default de `application.yml` para `${SPRING_PROFILES_ACTIVE:prod}` (fail-safe: exige variáveis explícitas de produção ou falha na inicialização); documentado `SPRING_PROFILES_ACTIVE=local` em `.env.example`; restrito `permitAll()` de `/api-docs/**` e `/swagger-ui/**` em `SecurityConfig` apenas aos perfis `local | test`.
+- **Regression test:** `ApiDocumentationProdProfileTest.apiDocumentationEndpointsAreNotAvailableInProdProfile`.
+
+### FINDING-06 — Alocação de `HttpSession` não autenticada em `GET /api/v1/auth/csrf` e ausência de rate limit (`RESOURCE-01`, `RATE-01`)
+- **ID:** `FINDING-06` (`RESOURCE-01`, `RATE-01`)
+- **Severity:** Medium
+- **Status:** `FIXED`
+- **Affected component/route:** `SecurityConfig`, `WebConfig`, `RateLimitInterceptor`, `GET /api/v1/auth/csrf`
+- **Evidence:** Fora do perfil `local`, `HttpSessionCsrfTokenRepository` criava uma `HttpSession` a cada chamada sem cookie em `GET /api/v1/auth/csrf`, e o endpoint não estava coberto pelo `RateLimitInterceptor`, permitindo exaustão de memória por requisições não autenticadas.
+- **Remediation:** Introduzido `SessionAwareCsrfTokenRepository` em `SecurityConfig` para perfis `!local`, emitindo cookie `XSRF-TOKEN` (`HttpOnly=true`, `SameSite=Lax`, e `Secure=true` em `prod`) enquanto não houver `HttpSession` ativa (`request.getSession(false) == null`) e vinculando o token à `HttpSession` após autenticação; registrado `/api/v1/auth/csrf` em `WebConfig` e `RateLimitInterceptor` (`auth-csrf`, `30/15min` por IP).
+- **Regression test:** `AuthResourceIntegrationTest.csrfEndpointReturnsUsableTokenWithoutAllocatingSessionForUnauthenticatedCallers` e `RateLimitWebIntegrationTest.rateLimitsCsrfEndpointByIp`.
+
+### FINDING-07 — Resolução de IP para rate limiting sem lista de proxies reversos confiáveis (`RATE-02`, `RATE-03`)
+- **ID:** `FINDING-07` (`RATE-02`, `RATE-03`)
+- **Severity:** Medium
+- **Status:** `FIXED`
+- **Affected component/route:** `AppProperties`, `WebConfig`, `RateLimitInterceptor`, `AuthResource`, `application-local.yml`, `application-prod.yml`
+- **Evidence:** `RateLimitInterceptor` usava apenas `request.getRemoteAddr()`. Atrás de um proxy reverso, todos os clientes compartilhariam o mesmo bucket de IP; habilitar `X-Forwarded-For` indiscriminadamente permitiria falsificação de IP.
+- **Remediation:** Adicionada configuração explícita `app.security.trusted-proxy-ips` (`TRUSTED_PROXY_IPS`) em `AppProperties` e nos arquivos `application-*.yml`; `RateLimitInterceptor.resolveClientAddress` ignora `X-Forwarded-For` quando `remoteAddr` não pertence a `trustedProxyIps` e, quando pertence, percorre `X-Forwarded-For` da direita para a esquerda selecionando o primeiro IP não confiável.
+- **Regression test:** `WebConfigTest.resolvesClientIpFromXForwardedForOnlyWhenRemoteAddrIsConfiguredAsTrustedProxy` e `RateLimitWebIntegrationTest.rateLimitsDraftWriteRoutesAndIgnoresForgedForwardedHeadersFromUntrustedClients`.
+
+### FINDING-08 — Aceitação de chaves criptográficas fracas/zeradas e validação tardia de `TOKEN_ENCRYPTION_KEY` (`OAUTH-04`, `CONFIG-01`)
+- **ID:** `FINDING-08` (`OAUTH-04`, `CONFIG-01`)
+- **Severity:** Medium
+- **Status:** `FIXED`
+- **Affected component/route:** `AesGcmTokenCipher`, `RateLimitService`, `.env.example`, `application-test.yml`, `ApiDocumentationProdProfileTest`
+- **Evidence:** `.env.example` continha `RATE_LIMIT_HMAC_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=` (32 bytes zero), aceita em produção por ter 32 bytes. `AesGcmTokenCipher` aceitava qualquer chave de 32 bytes (incluindo 32 bytes zero) e só validava a chave preguiçosamente em `/oauth/start`.
+- **Remediation:** `AesGcmTokenCipher` agora valida a chave na inicialização fora do perfil `local` e rejeita chaves com baixa diversidade de bytes (`< 8` valores distintos, bloqueando chaves zeradas/constantes); `RateLimitService` aplica a mesma verificação de entropia fora de `local | test`; removido placeholder `AAAA...` de `.env.example`.
+- **Regression test:** `AesGcmTokenCipherTest.missingOrWeakKeyFailsFastAtStartupOutsideLocalAndRejectsWeakKeysOnValidation` e `RateLimitServiceTest.validatesHmacKeyAndTranslatesLimitExceededAndStoreFailures`.
+
+### FINDING-09 — Negação de serviço (lockout DoS) por conta no login (`AUTH-06`)
+- **ID:** `FINDING-09` (`AUTH-06`)
+- **Severity:** Medium
+- **Status:** `FIXED`
+- **Affected component/route:** `AuthResource.login` (`POST /api/v1/auth/login`)
+- **Evidence:** O bucket por conta (`8` tentativas por `15` minutos) era debitado antes da verificação de senha e globalmente por e-mail, permitindo que um atacante que conhecesse o e-mail de um usuário o mantivesse bloqueado com 8 requisições a cada 15 minutos.
+- **Remediation:** O limite de `8/15min` em `AuthResource.login` passou a ser debitado apenas em falhas de autenticação (`catch (AuthenticationException)`) e composto por conta + IP (`dimension = "account-ip"`, `normalizedEmail + "|" + clientIp`), impedindo que tentativas falhas de outro IP ou com senha incorreta bloqueiem o login legítimo.
+- **Regression test:** `AuthResourceIntegrationTest.failedLoginsRateLimitOnlyTheOffendingAccountIpAndDoNotLockOutValidCredentials` e `RateLimitWebIntegrationTest.rateLimitsFailedLoginAttemptsByAccountAndIpAfterTheIpBudgetAllowsThem`.
+
 ---
 
 ## 2. Matriz de Privacidade e LGPD Técnica (Seção 11 de `planejamento-tecnico.md`)

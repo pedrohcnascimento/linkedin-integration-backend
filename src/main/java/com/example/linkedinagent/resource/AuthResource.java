@@ -1,5 +1,7 @@
 package com.example.linkedinagent.resource;
 
+import com.example.linkedinagent.config.AppProperties;
+import com.example.linkedinagent.config.WebConfig;
 import com.example.linkedinagent.domain.AppUser;
 import com.example.linkedinagent.dto.ApiError;
 import com.example.linkedinagent.dto.AuthDtos.CsrfResponse;
@@ -7,6 +9,7 @@ import com.example.linkedinagent.dto.AuthDtos.LoginRequest;
 import com.example.linkedinagent.dto.AuthDtos.RegisterRequest;
 import com.example.linkedinagent.dto.AuthDtos.UserResponse;
 import com.example.linkedinagent.security.AppUserPrincipal;
+import com.example.linkedinagent.security.RateLimitInterceptor;
 import com.example.linkedinagent.service.RateLimitService;
 import com.example.linkedinagent.service.RegistrationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -43,6 +46,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -56,6 +60,7 @@ public class AuthResource {
     private final SessionAuthenticationStrategy sessionAuthenticationStrategy;
     private final CsrfTokenRepository csrfTokenRepository;
     private final RateLimitService rateLimitService;
+    private final Set<String> trustedProxyIps;
 
     public AuthResource(
             RegistrationService registrationService,
@@ -63,13 +68,15 @@ public class AuthResource {
             SecurityContextRepository securityContextRepository,
             SessionAuthenticationStrategy sessionAuthenticationStrategy,
             CsrfTokenRepository csrfTokenRepository,
-            RateLimitService rateLimitService) {
+            RateLimitService rateLimitService,
+            AppProperties appProperties) {
         this.registrationService = registrationService;
         this.authenticationManager = authenticationManager;
         this.securityContextRepository = securityContextRepository;
         this.sessionAuthenticationStrategy = sessionAuthenticationStrategy;
         this.csrfTokenRepository = csrfTokenRepository;
         this.rateLimitService = rateLimitService;
+        this.trustedProxyIps = WebConfig.parseTrustedProxyIps(appProperties.getSecurity().getTrustedProxyIps());
     }
 
     @GetMapping("/auth/csrf")
@@ -186,13 +193,15 @@ public class AuthResource {
             @Valid @RequestBody LoginRequest request,
             HttpServletRequest httpRequest,
             HttpServletResponse httpResponse) {
-        rateLimitService.check("auth-login", List.of(new RateLimitService.Limit(
-                "account", request.email().trim().toLowerCase(Locale.ROOT), 8, Duration.ofMinutes(15))));
+        String normalizedEmail = request.email().trim().toLowerCase(Locale.ROOT);
         Authentication authentication;
         try {
             authentication = authenticationManager.authenticate(
                     UsernamePasswordAuthenticationToken.unauthenticated(request.email(), request.password()));
         } catch (AuthenticationException exception) {
+            String clientIp = RateLimitInterceptor.resolveClientAddress(httpRequest, trustedProxyIps);
+            rateLimitService.check("auth-login", List.of(new RateLimitService.Limit(
+                    "account-ip", normalizedEmail + "|" + clientIp, 8, Duration.ofMinutes(15))));
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new ApiError("AUTHENTICATION_FAILED", "Email or password is incorrect."));
         }

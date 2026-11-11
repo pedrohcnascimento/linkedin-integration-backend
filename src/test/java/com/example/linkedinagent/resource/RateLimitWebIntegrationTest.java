@@ -100,10 +100,18 @@ class RateLimitWebIntegrationTest {
     }
 
     @Test
-    void rateLimitsLoginAttemptsForAnAccountAfterTheIpBudgetAllowsThem() throws Exception {
+    void rateLimitsCsrfEndpointByIp() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/csrf"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "37"))
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+    }
+
+    @Test
+    void rateLimitsFailedLoginAttemptsByAccountAndIpAfterTheIpBudgetAllowsThem() throws Exception {
         when(rateLimitStore.acquire(anyList())).thenAnswer(invocation -> {
             List<RateLimitBucket> buckets = invocation.getArgument(0);
-            return buckets.stream().anyMatch(bucket -> bucket.dimension().equals("account"))
+            return buckets.stream().anyMatch(bucket -> bucket.dimension().equals("account-ip"))
                     ? Optional.of(Duration.ofSeconds(19))
                     : Optional.empty();
         });
@@ -112,7 +120,7 @@ class RateLimitWebIntegrationTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"email":"person@example.com","password":"valid-test-password"}
+                                {"email":"person@example.com","password":"wrong-test-password"}
                                 """))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string("Retry-After", "19"));

@@ -87,6 +87,7 @@ public class AppProperties {
     public static class Security {
         private String tokenEncryptionKey;
         private String corsAllowedOrigins;
+        private String trustedProxyIps = "";
 
         public String getTokenEncryptionKey() {
             return tokenEncryptionKey;
@@ -102,6 +103,14 @@ public class AppProperties {
 
         public void setCorsAllowedOrigins(String corsAllowedOrigins) {
             this.corsAllowedOrigins = corsAllowedOrigins;
+        }
+
+        public String getTrustedProxyIps() {
+            return trustedProxyIps;
+        }
+
+        public void setTrustedProxyIps(String trustedProxyIps) {
+            this.trustedProxyIps = trustedProxyIps;
         }
     }
 }

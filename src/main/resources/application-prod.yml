@@ -55,6 +55,7 @@ app:
   security:
     token-encryption-key: ${TOKEN_ENCRYPTION_KEY}
     cors-allowed-origins: ${CORS_ALLOWED_ORIGINS}
+    trusted-proxy-ips: ${TRUSTED_PROXY_IPS:}
   base-url: ${APP_BASE_URL}
 
 logging:

@@ -3,6 +3,7 @@ package com.example.linkedinagent.security;
 import com.example.linkedinagent.config.AppProperties;
 import com.example.linkedinagent.exception.TokenEncryptionException;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.env.MockEnvironment;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -17,16 +18,25 @@ class AesGcmTokenCipherTest {
             Base64.getEncoder().encodeToString("0123456789abcdef0123456789abcdef".getBytes(StandardCharsets.UTF_8));
     private static final String OTHER_KEY =
             Base64.getEncoder().encodeToString("fedcba9876543210fedcba9876543210".getBytes(StandardCharsets.UTF_8));
+    private static final String ALL_ZERO_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
     @Test
-    void missingKeyIsReportedWhenEncryptionIsValidatedNotWhenCipherIsConstructed() {
+    void missingOrWeakKeyFailsFastAtStartupOutsideLocalAndRejectsWeakKeysOnValidation() {
         AppProperties properties = new AppProperties();
-        assertThatCode(() -> new AesGcmTokenCipher(properties)).doesNotThrowAnyException();
+        MockEnvironment localEnvironment = new MockEnvironment().withProperty("spring.profiles.active", "local");
+        localEnvironment.setActiveProfiles("local");
+        assertThatCode(() -> new AesGcmTokenCipher(properties, localEnvironment)).doesNotThrowAnyException();
 
-        AesGcmTokenCipher cipher = new AesGcmTokenCipher(properties);
-        assertThatThrownBy(cipher::validateConfiguration)
+        MockEnvironment prodEnvironment = new MockEnvironment();
+        prodEnvironment.setActiveProfiles("prod");
+        assertThatThrownBy(() -> new AesGcmTokenCipher(properties, prodEnvironment))
                 .isInstanceOf(TokenEncryptionException.class)
                 .hasMessage("LinkedIn token encryption is not configured.");
+
+        properties.getSecurity().setTokenEncryptionKey(ALL_ZERO_KEY);
+        assertThatThrownBy(() -> new AesGcmTokenCipher(properties, prodEnvironment))
+                .isInstanceOf(TokenEncryptionException.class)
+                .hasMessage("LinkedIn token encryption key is too weak; generate 32 random bytes.");
     }
 
     @Test
