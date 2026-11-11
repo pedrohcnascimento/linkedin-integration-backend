@@ -6,7 +6,7 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-✅ **Passo 12 — API REST e contrato OpenAPI concluído** ([`docs/progress/STEP-12.md`](docs/progress/STEP-12.md)); próxima etapa do roteiro: **Passo 13 — Completar testes automatizados**. **Passo 11 (oportunidades/vagas)** permanece formalmente adiado para ciclo posterior ([`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)). OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação, publicação idempotente via Posts API e histórico paginado por usuário, com contrato OpenAPI verificado automaticamente contra todas as rotas `/api/v1/**` (e desativado em `prod`). Reservas são persistidas antes da chamada externa; resultados ambíguos bloqueiam novas tentativas até reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md)). A validação de concorrência em Oracle descartável do Passo 10 permanece pendente de infraestrutura. Veja [`docs/status-atual.md`](docs/status-atual.md).
+✅ **Passo 13 — Testes automatizados concluído** ([`docs/progress/STEP-13.md`](docs/progress/STEP-13.md)); próxima etapa do roteiro: **Passo 14 — Aplicar segurança, LGPD técnica e observabilidade**. **Passo 11 (oportunidades/vagas)** permanece formalmente adiado para ciclo posterior ([`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)). OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação, publicação idempotente via Posts API e histórico paginado por usuário, com contrato OpenAPI verificado automaticamente contra todas as rotas `/api/v1/**` (e desativado em `prod`) e suíte automatizada de 93 testes em 19 classes cobrindo todas as camadas DDD. Reservas são persistidas antes da chamada externa; resultados ambíguos bloqueiam novas tentativas até reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md)). A validação de concorrência em Oracle descartável do Passo 10 permanece pendente de infraestrutura. Veja [`docs/status-atual.md`](docs/status-atual.md).
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) e o roteiro, incluindo os próximos passos, em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
@@ -44,7 +44,7 @@ Essas funcionalidades são expostas pelos endpoints listados abaixo e cobertas p
 
 ### Em andamento / planejado
 
-- **Passo 13 (próxima etapa):** revisar e completar a cobertura de testes automatizados nas camadas unitária, HTTP/MockMvc e integração SQLite (migrations, isolamento, sessão/segurança e falhas externas).
+- **Passo 14 (próxima etapa):** aplicar e revisar segurança, retenção/exclusão de dados (LGPD técnica), auditoria sanitizada e observabilidade.
 - **Passo 10 (pendência de infraestrutura):** validação em Oracle descartável das migrations, do schema e da concorrência; a configuração atual não comprova compatibilidade operacional.
 - **Passo 11 (adiado para ciclo posterior):** registro local de oportunidades e integração com fontes externas autorizadas de vagas não serão implementados neste momento (ver [`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)).
 
@@ -84,7 +84,7 @@ Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem 
 
 ## Próximos passos
 
-1. Executar o **Passo 13 — Completar testes automatizados**, consolidando a cobertura unitária, HTTP/MockMvc e de persistência/migrations, seguido do Passo 14 (segurança, retenção/LGPD técnica e observabilidade).
+1. Executar o **Passo 14 — Aplicar segurança, LGPD técnica e observabilidade**, revisando retenção/exclusão de dados, auditoria sem tokens e observabilidade estruturada.
 2. Validar concorrência, migrations e schema em Oracle descartável (pendência remanescente do Passo 10) assim que houver instância Oracle disponível, além de confirmar JDK 21, Redis e IP atrás do proxy antes de exposição pública.
 3. Somente em ciclo posterior à estabilização da v1, retomar o Passo 11 (oportunidades locais e fontes externas autorizadas de vagas — ver [`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)).
 
