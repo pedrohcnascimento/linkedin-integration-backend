@@ -59,7 +59,7 @@ class RateLimitStoreTest {
     }
 
     @Test
-    void redisStoreExecutesAtomicScriptAndFailsClosedWhenRedisReturnsNull() {
+    void redisStoreMapsScriptReturnValuesAndFailsClosedWhenRedisReturnsNull() {
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
         RedisRateLimitStore store = new RedisRateLimitStore(redisTemplate, "linkedin-test");
         List<RateLimitBucket> buckets = List.of(

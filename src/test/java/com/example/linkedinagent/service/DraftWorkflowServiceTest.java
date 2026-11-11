@@ -35,7 +35,7 @@ class DraftWorkflowServiceTest {
     private static final Instant NOW = Instant.parse("2026-10-21T12:00:00Z");
 
     @Test
-    void concurrentDuplicateFingerprintIsReturnedAsConflictBeforeCallingLinkedIn() {
+    void uniqueConstraintViolationDuringReservationIsMappedToConflictWithoutCallingLinkedIn() {
         UUID userId = UUID.randomUUID();
         UUID draftId = UUID.randomUUID();
         ContentDraftRepository draftRepository = mock(ContentDraftRepository.class);
