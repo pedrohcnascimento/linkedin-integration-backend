@@ -22,11 +22,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -198,6 +200,72 @@ class RateLimitWebIntegrationTest {
                 .andExpect(header().string("Retry-After", "5"))
                 .andExpect(jsonPath("$.code").value("RATE_LIMIT_UNAVAILABLE"))
                 .andExpect(jsonPath("$.message").value("Requests are temporarily unavailable."));
+    }
+
+    @Test
+    void rateLimitsDraftWriteRoutesAndIgnoresForgedForwardedHeadersFromUntrustedClients() throws Exception {
+        UUID draftId = UUID.randomUUID();
+        mockMvc.perform(post("/api/v1/drafts")
+                        .with(user(testUser()))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"text":"Draft body","mediaCategory":"NONE"}
+                                """))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "37"))
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+
+        mockMvc.perform(patch("/api/v1/drafts/{id}", draftId)
+                        .with(user(testUser()))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"text":"Updated draft body"}
+                                """))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "37"))
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", draftId)
+                        .with(user(testUser()))
+                        .with(csrf()))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "37"))
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+
+        List<String> capturedIpSubjectHashes = new java.util.ArrayList<>();
+        when(rateLimitStore.acquire(anyList())).thenAnswer(invocation -> {
+            List<RateLimitBucket> buckets = invocation.getArgument(0);
+            buckets.stream()
+                    .filter(bucket -> bucket.dimension().equals("ip"))
+                    .findFirst()
+                    .ifPresent(bucket -> capturedIpSubjectHashes.add(bucket.subjectHash()));
+            return Optional.of(Duration.ofSeconds(15));
+        });
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .header("X-Forwarded-For", "198.51.100.10")
+                        .header("Forwarded", "for=198.51.100.10")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"person@example.com","password":"valid-test-password"}
+                                """))
+                .andExpect(status().isTooManyRequests());
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .header("X-Forwarded-For", "203.0.113.99")
+                        .header("Forwarded", "for=203.0.113.99")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"person@example.com","password":"valid-test-password"}
+                                """))
+                .andExpect(status().isTooManyRequests());
+
+        assertThat(capturedIpSubjectHashes).hasSize(2);
+        assertThat(capturedIpSubjectHashes.get(0)).isEqualTo(capturedIpSubjectHashes.get(1));
     }
 
     private AppUserPrincipal testUser() {

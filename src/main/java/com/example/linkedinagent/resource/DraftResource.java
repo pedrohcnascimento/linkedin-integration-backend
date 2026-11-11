@@ -89,6 +89,20 @@ public class DraftResource {
                             schema = @Schema(implementation = ApiError.class),
                             examples = @ExampleObject(name = "DRAFT_MEDIA_UNSUPPORTED", value = """
                                     {"code": "DRAFT_MEDIA_UNSUPPORTED", "message": "Only text drafts are supported in this release."}
+                                    """))),
+            @ApiResponse(responseCode = "429", description = "Limite local de escrita de drafts excedido (IP: 60/15min; conta/sessão: 30/15min).",
+                    headers = @Header(name = "Retry-After", description = "Segundos restantes até nova tentativa.", schema = @Schema(type = "string", example = "60")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "RATE_LIMITED", value = """
+                                    {"code": "RATE_LIMITED", "message": "Too many requests. Please retry later."}
+                                    """))),
+            @ApiResponse(responseCode = "503", description = "Armazenamento de rate limiting indisponível no perfil prod (fail-closed).",
+                    headers = @Header(name = "Retry-After", description = "Segundos sugeridos antes de nova tentativa.", schema = @Schema(type = "string", example = "5")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "RATE_LIMIT_UNAVAILABLE", value = """
+                                    {"code": "RATE_LIMIT_UNAVAILABLE", "message": "Requests are temporarily unavailable."}
                                     """)))
     })
     public ResponseEntity<DraftResponse> create(
@@ -182,6 +196,20 @@ public class DraftResource {
                             schema = @Schema(implementation = ApiError.class),
                             examples = @ExampleObject(name = "DRAFT_MEDIA_UNSUPPORTED", value = """
                                     {"code": "DRAFT_MEDIA_UNSUPPORTED", "message": "Only text drafts are supported in this release."}
+                                    """))),
+            @ApiResponse(responseCode = "429", description = "Limite local de escrita de drafts excedido (IP: 60/15min; conta/sessão: 30/15min).",
+                    headers = @Header(name = "Retry-After", description = "Segundos restantes até nova tentativa.", schema = @Schema(type = "string", example = "60")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "RATE_LIMITED", value = """
+                                    {"code": "RATE_LIMITED", "message": "Too many requests. Please retry later."}
+                                    """))),
+            @ApiResponse(responseCode = "503", description = "Armazenamento de rate limiting indisponível no perfil prod (fail-closed).",
+                    headers = @Header(name = "Retry-After", description = "Segundos sugeridos antes de nova tentativa.", schema = @Schema(type = "string", example = "5")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "RATE_LIMIT_UNAVAILABLE", value = """
+                                    {"code": "RATE_LIMIT_UNAVAILABLE", "message": "Requests are temporarily unavailable."}
                                     """)))
     })
     public DraftResponse update(
@@ -241,6 +269,20 @@ public class DraftResource {
                             schema = @Schema(implementation = ApiError.class),
                             examples = @ExampleObject(name = "DRAFT_INVALID_STATE", value = """
                                     {"code": "DRAFT_INVALID_STATE", "message": "Only a DRAFT can be approved."}
+                                    """))),
+            @ApiResponse(responseCode = "429", description = "Limite local de escrita de drafts excedido (IP: 60/15min; conta/sessão: 30/15min).",
+                    headers = @Header(name = "Retry-After", description = "Segundos restantes até nova tentativa.", schema = @Schema(type = "string", example = "60")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "RATE_LIMITED", value = """
+                                    {"code": "RATE_LIMITED", "message": "Too many requests. Please retry later."}
+                                    """))),
+            @ApiResponse(responseCode = "503", description = "Armazenamento de rate limiting indisponível no perfil prod (fail-closed).",
+                    headers = @Header(name = "Retry-After", description = "Segundos sugeridos antes de nova tentativa.", schema = @Schema(type = "string", example = "5")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = @ExampleObject(name = "RATE_LIMIT_UNAVAILABLE", value = """
+                                    {"code": "RATE_LIMIT_UNAVAILABLE", "message": "Requests are temporarily unavailable."}
                                     """)))
     })
     public DraftResponse approve(

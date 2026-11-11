@@ -164,4 +164,36 @@ class DomainModelTest {
         assertThatThrownBy(() -> new RateLimitBucket("scope", "ip", validHash, 10, Duration.ZERO))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void auditEventEnforcesSanitizedMetadataAndRejectsSecretMarkers() {
+        AppUser user = AppUser.reference(UUID.randomUUID());
+        AuditEvent event = AuditEvent.record(
+                user,
+                "LINKEDIN_CONNECTION_DISCONNECTED",
+                "LINKEDIN_AUTHORIZATION",
+                "auth-1",
+                "DISCONNECTED",
+                NOW,
+                "localTokensRemoved=true;remoteRevocation=not_supported");
+
+        assertThat(event.getId()).isNotNull();
+        assertThat(event.getAppUser()).isSameAs(user);
+        assertThat(event.getEventType()).isEqualTo("LINKEDIN_CONNECTION_DISCONNECTED");
+        assertThat(event.getOutcome()).isEqualTo("DISCONNECTED");
+        assertThat(event.getMetadataSanitized()).isEqualTo("localTokensRemoved=true;remoteRevocation=not_supported");
+
+        assertThatThrownBy(() -> AuditEvent.record(user, " ", "RES", "1", "OK", NOW, null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> AuditEvent.record(user, "EVT", "RES", "1", " ", NOW, null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> AuditEvent.record(user, "EVT", "RES", "1", "OK", NOW, "token=v1.abcd"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> AuditEvent.record(user, "EVT", "RES", "1", "OK", NOW, "Bearer secret"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> AuditEvent.record(user, "EVT", "RES", "1", "OK", NOW, "access_token=xyz"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> AuditEvent.record(user, "EVT", "RES", "1", "OK", NOW, "password=123"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }

@@ -2,8 +2,8 @@
 
 **Repository:** [`pedrohcnascimento/linkedin-integration-backend`](https://github.com/pedrohcnascimento/linkedin-integration-backend)  
 **Suggested location:** `docs/PLANO_AUDITORIA_SEGURANCA.md`  
-**Document status:** Planned assessment; this document is not evidence that an audit has already been performed.  
-**Baseline reviewed:** repository documentation and configuration as of 22 October 2026.
+**Document status:** Active assessment plan & baseline verification record. Code-level controls, LGPD technical retention/erasure, sanitized audit trail (`audit_event`), correlation headers (`X-Request-Id`), security headers, and automated regression tests (`AUTH-*`, `AUTHZ-*`, `CSRF-*`, `CORS-*`, `OAUTH-*`, `PUB-01..03/05..06`, `RATE-01/03/04`, `INPUT-*`, `RESOURCE-*`, `DATA-01`, `CONFIG-*`, `DB-02`, `DOC-01`) were executed and verified in **Step 14** (11 November 2026 — see [`docs/progress/STEP-14.md`](progress/STEP-14.md)). Infrastructure-dependent checks (`PUB-04`, `DB-01` on disposable Oracle, `RATE-02` on shared live Redis, and CI/DAST pipeline scans) remain open until target infrastructure is available.  
+**Baseline reviewed:** repository documentation, code, and 98-test automated suite as of 11 November 2026.
 
 ## 1. Purpose
 

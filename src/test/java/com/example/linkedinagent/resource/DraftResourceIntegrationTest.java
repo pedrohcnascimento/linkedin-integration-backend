@@ -389,9 +389,11 @@ class DraftResourceIntegrationTest {
                 .thenThrow(new IllegalStateException("simulated process interruption"))
                 .thenReturn(new PublicationResult("urn:li:share:published-with-fresh-key"));
 
-        assertThatThrownBy(() -> mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                .session(session).with(csrf()).header("Idempotency-Key", "interrupted-key")))
-                .hasRootCauseInstanceOf(IllegalStateException.class);
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "interrupted-key"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
+                .andExpect(jsonPath("$.message").value("An unexpected error occurred."));
 
         // A reserva PUBLISHING sobrevive em transação própria e bloqueia tanto a mesma chave quanto chaves novas.
         mockMvc.perform(get("/api/v1/publications").session(session))

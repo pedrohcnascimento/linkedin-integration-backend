@@ -1,10 +1,15 @@
 package com.example.linkedinagent.exception;
 
 import com.example.linkedinagent.dto.ApiError;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -13,6 +18,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
     private static final long STORE_RETRY_AFTER_SECONDS = 5;
 
     @ExceptionHandler(RateLimitExceededException.class)
@@ -97,5 +103,17 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleInvalidRequest(Exception exception) {
         return ResponseEntity.badRequest()
                 .body(new ApiError("INVALID_REQUEST", "Request validation failed."));
+    }
+
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<ApiError> handleUnexpectedRuntimeException(RuntimeException exception) {
+        if (exception instanceof ErrorResponse
+                || exception instanceof AccessDeniedException
+                || exception instanceof AuthenticationException) {
+            throw exception;
+        }
+        log.error("Unhandled runtime exception ({})", exception.getClass().getSimpleName());
+        return ResponseEntity.internalServerError()
+                .body(new ApiError("INTERNAL_ERROR", "An unexpected error occurred."));
     }
 }

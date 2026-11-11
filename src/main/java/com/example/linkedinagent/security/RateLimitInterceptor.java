@@ -47,20 +47,37 @@ public class RateLimitInterceptor implements HandlerInterceptor {
                 || path.matches("/api/v1/drafts/[^/]+/publish"))
                 && List.of("POST", "PUT", "PATCH", "DELETE").contains(request.getMethod());
         if (publicationWrite) {
-            List<RateLimitService.Limit> limits = new ArrayList<>();
-            limits.add(new RateLimitService.Limit("ip", clientAddress(request), 30, FIFTEEN_MINUTES));
-            if (request.getUserPrincipal() instanceof Authentication authentication
-                    && authentication.getPrincipal() instanceof AppUserPrincipal user) {
-                limits.add(new RateLimitService.Limit(
-                        "account", user.getId().toString(), 10, FIFTEEN_MINUTES));
-                if (request.getSession(false) != null) {
-                    limits.add(new RateLimitService.Limit(
-                            "session", request.getSession(false).getId(), 10, FIFTEEN_MINUTES));
-                }
-            }
-            rateLimitService.check("publication-write", limits);
+            rateLimitService.check("publication-write", authenticatedWriteLimits(request, 30, 10));
+            return true;
+        }
+        boolean draftWrite = ("POST".equals(request.getMethod()) && path.equals("/api/v1/drafts"))
+                || ("PATCH".equals(request.getMethod()) && path.matches("/api/v1/drafts/[^/]+"))
+                || ("POST".equals(request.getMethod()) && path.matches("/api/v1/drafts/[^/]+/approve"));
+        if (draftWrite) {
+            rateLimitService.check("draft-write", authenticatedWriteLimits(request, 60, 30));
         }
         return true;
+    }
+
+    private List<RateLimitService.Limit> authenticatedWriteLimits(
+            HttpServletRequest request,
+            int ipMaximumRequests,
+            int accountAndSessionMaximumRequests) {
+        List<RateLimitService.Limit> limits = new ArrayList<>();
+        limits.add(new RateLimitService.Limit("ip", clientAddress(request), ipMaximumRequests, FIFTEEN_MINUTES));
+        if (request.getUserPrincipal() instanceof Authentication authentication
+                && authentication.getPrincipal() instanceof AppUserPrincipal user) {
+            limits.add(new RateLimitService.Limit(
+                    "account", user.getId().toString(), accountAndSessionMaximumRequests, FIFTEEN_MINUTES));
+            if (request.getSession(false) != null) {
+                limits.add(new RateLimitService.Limit(
+                        "session",
+                        request.getSession(false).getId(),
+                        accountAndSessionMaximumRequests,
+                        FIFTEEN_MINUTES));
+            }
+        }
+        return limits;
     }
 
     private String applicationPath(HttpServletRequest request) {

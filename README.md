@@ -6,7 +6,7 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-✅ **Passo 13 — Testes automatizados concluído** ([`docs/progress/STEP-13.md`](docs/progress/STEP-13.md)); próxima etapa do roteiro: **Passo 14 — Aplicar segurança, LGPD técnica e observabilidade**. **Passo 11 (oportunidades/vagas)** permanece formalmente adiado para ciclo posterior ([`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)). OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação, publicação idempotente via Posts API e histórico paginado por usuário, com contrato OpenAPI verificado automaticamente contra todas as rotas `/api/v1/**` (e desativado em `prod`) e suíte automatizada de 93 testes em 19 classes cobrindo todas as camadas DDD. Reservas são persistidas antes da chamada externa; resultados ambíguos bloqueiam novas tentativas até reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md)). A validação de concorrência em Oracle descartável do Passo 10 permanece pendente de infraestrutura. Veja [`docs/status-atual.md`](docs/status-atual.md).
+✅ **Passo 14 — Segurança, LGPD técnica e observabilidade concluído** ([`docs/progress/STEP-14.md`](docs/progress/STEP-14.md)); próxima etapa do roteiro: **Passo 15 — Dockerizar e documentar a execução**. **Passo 11 (oportunidades/vagas)** permanece formalmente adiado para ciclo posterior ([`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)). OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação, publicação idempotente via Posts API e histórico paginado por usuário, com contrato OpenAPI verificado automaticamente contra todas as rotas `/api/v1/**` (e desativado em `prod`), trilha de auditoria sanitizada (`audit_event`), retenção/exclusão LGPD (`DataRetentionService`), correlação `X-Request-Id` e suíte automatizada de 98 testes em 20 classes cobrindo todas as camadas DDD. Reservas são persistidas antes da chamada externa; resultados ambíguos bloqueiam novas tentativas até reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md)). A validação de concorrência em Oracle descartável do Passo 10 permanece pendente de infraestrutura. Veja [`docs/status-atual.md`](docs/status-atual.md).
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) e o roteiro, incluindo os próximos passos, em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
@@ -44,7 +44,7 @@ Essas funcionalidades são expostas pelos endpoints listados abaixo e cobertas p
 
 ### Em andamento / planejado
 
-- **Passo 14 (próxima etapa):** aplicar e revisar segurança, retenção/exclusão de dados (LGPD técnica), auditoria sanitizada e observabilidade.
+- **Passo 15 (próxima etapa):** Dockerizar e documentar a execução padronizada sem segredos embutidos.
 - **Passo 10 (pendência de infraestrutura):** validação em Oracle descartável das migrations, do schema e da concorrência; a configuração atual não comprova compatibilidade operacional.
 - **Passo 11 (adiado para ciclo posterior):** registro local de oportunidades e integração com fontes externas autorizadas de vagas não serão implementados neste momento (ver [`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)).
 
@@ -84,7 +84,7 @@ Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem 
 
 ## Próximos passos
 
-1. Executar o **Passo 14 — Aplicar segurança, LGPD técnica e observabilidade**, revisando retenção/exclusão de dados, auditoria sem tokens e observabilidade estruturada.
+1. Executar o **Passo 15 — Dockerizar e documentar a execução**, padronizando imagem, health check e configuração por variáveis de ambiente sem incluir `.env` ou dados locais.
 2. Validar concorrência, migrations e schema em Oracle descartável (pendência remanescente do Passo 10) assim que houver instância Oracle disponível, além de confirmar JDK 21, Redis e IP atrás do proxy antes de exposição pública.
 3. Somente em ciclo posterior à estabilização da v1, retomar o Passo 11 (oportunidades locais e fontes externas autorizadas de vagas — ver [`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)).
 

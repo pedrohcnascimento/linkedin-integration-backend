@@ -37,4 +37,23 @@ public interface OAuthTransactionRepository extends JpaRepository<OAuthTransacti
               and transaction.consumedAt is null
             """)
     int deletePendingForUser(@Param("appUserId") UUID appUserId);
+
+    @Transactional
+    @Modifying
+    @Query("""
+            delete from OAuthTransaction transaction
+            where transaction.appUser.id = :appUserId
+            """)
+    int deleteAllForUser(@Param("appUserId") UUID appUserId);
+
+    @Transactional
+    @Modifying
+    @Query("""
+            delete from OAuthTransaction transaction
+            where transaction.expiresAt <= :now
+               or (transaction.consumedAt is not null and transaction.consumedAt <= :consumedCutoff)
+            """)
+    int deleteExpiredOrConsumedBefore(
+            @Param("now") Instant now,
+            @Param("consumedCutoff") Instant consumedCutoff);
 }

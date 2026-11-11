@@ -221,6 +221,8 @@ class ApiDocumentationLocalProfileTest {
                 .andExpect(jsonPath(createDraft + ".responses['400'].content['application/json'].examples.INVALID_REQUEST").exists())
                 .andExpect(jsonPath(createDraft + ".responses['400'].content['application/json'].examples.INVALID_DRAFT").exists())
                 .andExpect(jsonPath(createDraft + ".responses['422'].content['application/json'].examples.DRAFT_MEDIA_UNSUPPORTED").exists())
+                .andExpect(jsonPath(createDraft + ".responses['429'].headers['Retry-After']").exists())
+                .andExpect(jsonPath(createDraft + ".responses['503'].content['application/json'].examples.RATE_LIMIT_UNAVAILABLE").exists())
                 .andExpect(jsonPath(listDrafts + ".parameters[?(@.name == 'page')].schema.minimum").value(hasItem(0)))
                 .andExpect(jsonPath(listDrafts + ".parameters[?(@.name == 'size')].schema.minimum").value(hasItem(1)))
                 .andExpect(jsonPath(listDrafts + ".parameters[?(@.name == 'size')].schema.maximum").value(hasItem(50)))
@@ -237,12 +239,16 @@ class ApiDocumentationLocalProfileTest {
                 .andExpect(jsonPath(editDraft + ".responses['404'].content['application/json'].examples.DRAFT_NOT_FOUND").exists())
                 .andExpect(jsonPath(editDraft + ".responses['409'].content['application/json'].examples.DRAFT_INVALID_STATE").exists())
                 .andExpect(jsonPath(editDraft + ".responses['422'].content['application/json'].examples.DRAFT_MEDIA_UNSUPPORTED").exists())
+                .andExpect(jsonPath(editDraft + ".responses['429'].headers['Retry-After']").exists())
+                .andExpect(jsonPath(editDraft + ".responses['503'].content['application/json'].examples.RATE_LIMIT_UNAVAILABLE").exists())
                 .andExpect(jsonPath(approveDraft + ".responses['200'].content['application/json'].schema['$ref']",
                         endsWith("/DraftResponse")))
                 .andExpect(jsonPath(approveDraft + ".responses['401']").exists())
                 .andExpect(jsonPath(approveDraft + ".responses['403']").exists())
                 .andExpect(jsonPath(approveDraft + ".responses['404'].content['application/json'].examples.DRAFT_NOT_FOUND").exists())
                 .andExpect(jsonPath(approveDraft + ".responses['409'].content['application/json'].examples.DRAFT_INVALID_STATE").exists())
+                .andExpect(jsonPath(approveDraft + ".responses['429'].headers['Retry-After']").exists())
+                .andExpect(jsonPath(approveDraft + ".responses['503'].content['application/json'].examples.RATE_LIMIT_UNAVAILABLE").exists())
                 .andExpect(jsonPath("$.components.schemas.DraftResponse.properties.status.enum",
                         containsInAnyOrder("DRAFT", "APPROVED", "PUBLISHED")));
     }

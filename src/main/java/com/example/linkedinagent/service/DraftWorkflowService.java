@@ -13,6 +13,9 @@ import com.example.linkedinagent.repository.ContentDraftRepository;
 import com.example.linkedinagent.repository.LinkedInAuthorizationRepository;
 import com.example.linkedinagent.repository.PublicationRepository;
 import com.example.linkedinagent.security.TokenCipher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -27,6 +30,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Objects;
@@ -35,6 +39,8 @@ import java.util.UUID;
 @Service
 public class DraftWorkflowService {
 
+    private static final Logger log = LoggerFactory.getLogger(DraftWorkflowService.class);
+
     private final ContentDraftRepository draftRepository;
     private final PublicationRepository publicationRepository;
     private final LinkedInAuthorizationRepository authorizationRepository;
@@ -42,6 +48,7 @@ public class DraftWorkflowService {
     private final LinkedInPublishingClient publishingClient;
     private final Clock clock;
     private final TransactionTemplate transactionTemplate;
+    private final AuditService auditService;
 
     public DraftWorkflowService(
             ContentDraftRepository draftRepository,
@@ -51,6 +58,27 @@ public class DraftWorkflowService {
             LinkedInPublishingClient publishingClient,
             Clock clock,
             PlatformTransactionManager transactionManager) {
+        this(
+                draftRepository,
+                publicationRepository,
+                authorizationRepository,
+                tokenCipher,
+                publishingClient,
+                clock,
+                transactionManager,
+                null);
+    }
+
+    @Autowired
+    public DraftWorkflowService(
+            ContentDraftRepository draftRepository,
+            PublicationRepository publicationRepository,
+            LinkedInAuthorizationRepository authorizationRepository,
+            TokenCipher tokenCipher,
+            LinkedInPublishingClient publishingClient,
+            Clock clock,
+            PlatformTransactionManager transactionManager,
+            AuditService auditService) {
         this.draftRepository = draftRepository;
         this.publicationRepository = publicationRepository;
         this.authorizationRepository = authorizationRepository;
@@ -59,6 +87,7 @@ public class DraftWorkflowService {
         this.clock = clock;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.auditService = auditService;
     }
 
     @Transactional
@@ -75,14 +104,29 @@ public class DraftWorkflowService {
                 originalUrl,
                 title,
                 clock.instant());
-        return draftRepository.saveAndFlush(draft);
+        ContentDraft saved = draftRepository.saveAndFlush(draft);
+        log.info("Created text draft userId={} draftId={} status={}",
+                appUserId, saved.getId(), saved.getStatus());
+        return saved;
     }
 
     @Transactional
     public ContentDraft approve(UUID appUserId, UUID draftId) {
         ContentDraft draft = ownedDraft(appUserId, draftId);
         draft.approve(clock.instant());
-        return draftRepository.saveAndFlush(draft);
+        ContentDraft approved = draftRepository.saveAndFlush(draft);
+        if (auditService != null) {
+            auditService.recordForUser(
+                    appUserId,
+                    "DRAFT_APPROVED",
+                    "CONTENT_DRAFT",
+                    approved.getId().toString(),
+                    ContentDraft.STATUS_APPROVED,
+                    null);
+        }
+        log.info("Approved draft userId={} draftId={} approvedAt={}",
+                appUserId, approved.getId(), approved.getApprovedAt());
+        return approved;
     }
 
     @Transactional(readOnly = true)
@@ -116,23 +160,34 @@ public class DraftWorkflowService {
                 transactionTemplate.execute(transaction -> reservePublication(appUserId, draftId, idempotencyKey)),
                 "Publication reservation transaction returned no result.");
         if (attempt.replay()) {
+            log.info("Replayed completed publication userId={} draftId={} publicationId={} status={}",
+                    appUserId, draftId, attempt.publication().getId(), attempt.publication().getStatus());
             return attempt.publication();
         }
 
+        long startedNanos = System.nanoTime();
         PublicationResult result;
         try {
             result = publishingClient.publish(attempt.accessToken(), attempt.command());
         } catch (LinkedInPublishingException exception) {
+            long latencyMs = Duration.ofNanos(System.nanoTime() - startedNanos).toMillis();
+            UUID publicationId = attempt.publication().getId();
             transactionTemplate.execute(transaction -> {
-                recordPublicationFailure(attempt.publication().getId(), exception);
+                recordPublicationFailure(appUserId, draftId, publicationId, exception, latencyMs);
                 return null;
             });
+            log.warn("LinkedIn publication failed userId={} draftId={} publicationId={} failureCode={} outcomeUnknown={} latencyMs={}",
+                    appUserId, draftId, publicationId, exception.getFailureCode(), exception.isOutcomeUnknown(), latencyMs);
             throw exception;
         }
-        return Objects.requireNonNull(
+        long latencyMs = Duration.ofNanos(System.nanoTime() - startedNanos).toMillis();
+        Publication completed = Objects.requireNonNull(
                 transactionTemplate.execute(transaction ->
-                        completePublication(appUserId, draftId, attempt.publication().getId(), result)),
+                        completePublication(appUserId, draftId, attempt.publication().getId(), result, latencyMs)),
                 "Publication completion transaction returned no result.");
+        log.info("LinkedIn publication completed userId={} draftId={} publicationId={} status={} latencyMs={}",
+                appUserId, draftId, completed.getId(), completed.getStatus(), latencyMs);
+        return completed;
     }
 
     private PublishAttempt reservePublication(UUID appUserId, UUID draftId, String idempotencyKey) {
@@ -183,7 +238,8 @@ public class DraftWorkflowService {
             UUID appUserId,
             UUID draftId,
             UUID publicationId,
-            PublicationResult result) {
+            PublicationResult result,
+            long latencyMs) {
         Publication publication = publicationRepository.findById(publicationId)
                 .orElseThrow(() -> new IllegalStateException("Reserved publication was not found."));
         ContentDraft draft = draftRepository.findLockedByIdAndAppUser_Id(draftId, appUserId)
@@ -192,14 +248,38 @@ public class DraftWorkflowService {
         publication.markPublished(result.externalPostId(), now);
         draft.markPublished(now);
         draftRepository.save(draft);
-        return publicationRepository.saveAndFlush(publication);
+        Publication saved = publicationRepository.saveAndFlush(publication);
+        if (auditService != null) {
+            auditService.recordForUser(
+                    appUserId,
+                    "PUBLICATION_COMPLETED",
+                    "PUBLICATION",
+                    saved.getId().toString(),
+                    Publication.STATUS_PUBLISHED,
+                    "draftId=" + draftId + ";externalPostId=" + result.externalPostId() + ";latencyMs=" + latencyMs);
+        }
+        return saved;
     }
 
-    private void recordPublicationFailure(UUID publicationId, LinkedInPublishingException exception) {
+    private void recordPublicationFailure(
+            UUID appUserId,
+            UUID draftId,
+            UUID publicationId,
+            LinkedInPublishingException exception,
+            long latencyMs) {
         Publication publication = publicationRepository.findById(publicationId)
                 .orElseThrow(() -> new IllegalStateException("Reserved publication was not found."));
         publication.markFailed(exception);
-        publicationRepository.saveAndFlush(publication);
+        Publication saved = publicationRepository.saveAndFlush(publication);
+        if (auditService != null) {
+            auditService.recordForUser(
+                    appUserId,
+                    "PUBLICATION_FAILED",
+                    "PUBLICATION",
+                    saved.getId().toString(),
+                    saved.getStatus(),
+                    "draftId=" + draftId + ";failureCode=" + saved.getFailureCode() + ";latencyMs=" + latencyMs);
+        }
     }
 
     private ContentDraft ownedDraft(UUID appUserId, UUID draftId) {
