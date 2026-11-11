@@ -32,11 +32,12 @@ import static org.mockito.Mockito.when;
 
 class DraftWorkflowServiceTest {
 
+    private static final Instant NOW = Instant.parse("2026-10-21T12:00:00Z");
+
     @Test
     void concurrentDuplicateFingerprintIsReturnedAsConflictBeforeCallingLinkedIn() {
         UUID userId = UUID.randomUUID();
         UUID draftId = UUID.randomUUID();
-        Instant now = Instant.parse("2026-10-21T12:00:00Z");
         ContentDraftRepository draftRepository = mock(ContentDraftRepository.class);
         PublicationRepository publicationRepository = mock(PublicationRepository.class);
         LinkedInAuthorizationRepository authorizationRepository = mock(LinkedInAuthorizationRepository.class);
@@ -45,11 +46,7 @@ class DraftWorkflowServiceTest {
         PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
         when(transactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
 
-        ContentDraft draft = new ContentDraft();
-        draft.setId(draftId);
-        draft.setText("Approved text");
-        draft.setStatus(ContentDraft.STATUS_APPROVED);
-        draft.setApprovedAt(now.minusSeconds(30));
+        ContentDraft draft = approvedDraft(draftId);
         when(draftRepository.findLockedByIdAndAppUser_Id(draftId, userId)).thenReturn(Optional.of(draft));
         when(publicationRepository.findByAppUser_IdAndRequestFingerprint(any(), anyString()))
                 .thenReturn(Optional.empty());
@@ -61,7 +58,7 @@ class DraftWorkflowServiceTest {
         authorization.setMemberSubject("member-subject");
         authorization.setEncryptedAccessToken("encrypted-token");
         authorization.setStatus(LinkedInAuthorization.STATUS_ACTIVE);
-        authorization.setExpiresAt(now.plusSeconds(3600));
+        authorization.setExpiresAt(NOW.plusSeconds(3600));
         when(authorizationRepository.findByAppUser_Id(userId)).thenReturn(Optional.of(authorization));
         when(tokenCipher.decrypt("encrypted-token")).thenReturn("access-token");
         when(publicationRepository.saveAndFlush(any()))
@@ -73,7 +70,7 @@ class DraftWorkflowServiceTest {
                 authorizationRepository,
                 tokenCipher,
                 publishingClient,
-                Clock.fixed(now, ZoneOffset.UTC),
+                Clock.fixed(NOW, ZoneOffset.UTC),
                 transactionManager);
 
         assertThatThrownBy(() -> service.publish(userId, draftId, "same-key"))
@@ -83,5 +80,68 @@ class DraftWorkflowServiceTest {
                     assertThat(exception).hasMessage("This idempotent publication request was already processed.");
                 });
         verify(publishingClient, never()).publish(anyString(), any());
+    }
+
+    @Test
+    void publishRejectsExpiredOrMissingLinkedInConnectionAndOverlongIdempotencyKey() {
+        UUID userId = UUID.randomUUID();
+        UUID draftId = UUID.randomUUID();
+        ContentDraftRepository draftRepository = mock(ContentDraftRepository.class);
+        PublicationRepository publicationRepository = mock(PublicationRepository.class);
+        LinkedInAuthorizationRepository authorizationRepository = mock(LinkedInAuthorizationRepository.class);
+        TokenCipher tokenCipher = mock(TokenCipher.class);
+        LinkedInPublishingClient publishingClient = mock(LinkedInPublishingClient.class);
+        PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+        when(transactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
+
+        ContentDraft draft = approvedDraft(draftId);
+        when(draftRepository.findLockedByIdAndAppUser_Id(draftId, userId)).thenReturn(Optional.of(draft));
+        when(publicationRepository.findByAppUser_IdAndRequestFingerprint(any(), anyString()))
+                .thenReturn(Optional.empty());
+
+        LinkedInAuthorization expired = new LinkedInAuthorization();
+        expired.setMemberSubject("member-subject");
+        expired.setEncryptedAccessToken("encrypted-token");
+        expired.setStatus(LinkedInAuthorization.STATUS_ACTIVE);
+        expired.setExpiresAt(NOW);
+        when(authorizationRepository.findByAppUser_Id(userId)).thenReturn(Optional.of(expired));
+
+        DraftWorkflowService service = new DraftWorkflowService(
+                draftRepository,
+                publicationRepository,
+                authorizationRepository,
+                tokenCipher,
+                publishingClient,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                transactionManager);
+
+        assertThatThrownBy(() -> service.publish(userId, draftId, "k".repeat(201)))
+                .isInstanceOfSatisfying(DraftWorkflowException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo("IDEMPOTENCY_KEY_REQUIRED");
+                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                });
+
+        assertThatThrownBy(() -> service.publish(userId, draftId, "valid-key"))
+                .isInstanceOfSatisfying(DraftWorkflowException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo("LINKEDIN_CONNECTION_REQUIRED");
+                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                });
+
+        when(authorizationRepository.findByAppUser_Id(userId)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.publish(userId, draftId, "valid-key-2"))
+                .isInstanceOfSatisfying(DraftWorkflowException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo("LINKEDIN_CONNECTION_REQUIRED");
+                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                });
+        verify(publishingClient, never()).publish(anyString(), any());
+    }
+
+    private ContentDraft approvedDraft(UUID draftId) {
+        ContentDraft draft = new ContentDraft();
+        draft.setId(draftId);
+        draft.setText("Approved text");
+        draft.setStatus(ContentDraft.STATUS_APPROVED);
+        draft.setApprovedAt(NOW.minusSeconds(30));
+        return draft;
     }
 }

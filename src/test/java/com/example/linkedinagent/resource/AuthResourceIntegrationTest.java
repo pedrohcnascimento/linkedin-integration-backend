@@ -97,7 +97,10 @@ class AuthResourceIntegrationTest {
     void loginCreatesSessionAndCurrentUserRequiresThatSession() throws Exception {
         String email = UUID.randomUUID() + "@example.com";
         register(email);
+        MockHttpSession preLoginSession = new MockHttpSession();
+        String preLoginSessionId = preLoginSession.getId();
         MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
+                        .session(preLoginSession)
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -105,15 +108,20 @@ class AuthResourceIntegrationTest {
                                 """.formatted(email, PASSWORD)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value(email))
+                .andExpect(jsonPath("$.password").doesNotExist())
+                .andExpect(jsonPath("$.passwordHash").doesNotExist())
                 .andReturn();
 
         MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
         assertThat(session).isNotNull();
+        assertThat(session.getId()).isNotEqualTo(preLoginSessionId);
 
         mockMvc.perform(get("/api/v1/users/me").session(session))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value(email))
-                .andExpect(jsonPath("$.id").isNotEmpty());
+                .andExpect(jsonPath("$.id").isNotEmpty())
+                .andExpect(jsonPath("$.password").doesNotExist())
+                .andExpect(jsonPath("$.passwordHash").doesNotExist());
 
         mockMvc.perform(get("/api/v1/users/me"))
                 .andExpect(status().isUnauthorized());

@@ -4,6 +4,7 @@ import com.example.linkedinagent.client.LinkedInOAuthClient;
 import com.example.linkedinagent.config.AppProperties;
 import com.example.linkedinagent.domain.AppUser;
 import com.example.linkedinagent.domain.LinkedInAuthorization;
+import com.example.linkedinagent.domain.LinkedInConnection;
 import com.example.linkedinagent.domain.OAuthTransaction;
 import com.example.linkedinagent.exception.LinkedInOAuthException;
 import com.example.linkedinagent.exception.TokenEncryptionException;
@@ -21,6 +22,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -61,6 +63,49 @@ class LinkedInOAuthServiceTest {
         verify(fixture.authorizationRepository).saveAndFlush(any(LinkedInAuthorization.class));
     }
 
+    @Test
+    void expiredOAuthStateIsRejectedAndConnectionReportsExpiredWhenTokenHasLapsed() {
+        Fixture fixture = new Fixture(NOW.minusSeconds(1));
+
+        assertThatThrownBy(() -> fixture.service.complete(fixture.start(), "authorization-code"))
+                .isInstanceOf(LinkedInOAuthException.class)
+                .hasMessage("OAuth state is missing, expired, or already used.");
+        verify(fixture.oauthClient, never()).exchangeAuthorizationCode(anyString());
+
+        LinkedInAuthorization lapsed = LinkedInAuthorization.createForUser(AppUser.reference(USER_ID), NOW.minusSeconds(3600));
+        lapsed.refreshTokens("member-subject", "enc-token", null, "openid profile", NOW, NOW.minusSeconds(3600));
+        when(fixture.authorizationRepository.findByAppUser_Id(USER_ID)).thenReturn(Optional.of(lapsed));
+
+        Optional<LinkedInConnection> connection = fixture.service.connection(USER_ID);
+        assertThat(connection).isPresent();
+        assertThat(connection.get().status()).isEqualTo(LinkedInAuthorization.STATUS_EXPIRED);
+    }
+
+    @Test
+    void completeUpdatesExistingAuthorizationOnReconnectAndDisconnectRemovesLocalState() {
+        Fixture fixture = new Fixture();
+        LinkedInAuthorization existing = LinkedInAuthorization.createForUser(
+                AppUser.reference(USER_ID), NOW.minusSeconds(7200));
+        when(fixture.authorizationRepository.findByAppUser_Id(USER_ID)).thenReturn(Optional.of(existing));
+        when(fixture.tokenCipher.encrypt("access-token")).thenReturn("enc-access");
+        when(fixture.tokenCipher.encrypt("refresh-token")).thenReturn("enc-refresh");
+        when(fixture.oauthClient.exchangeAuthorizationCode("authorization-code"))
+                .thenReturn(new LinkedInOAuthClient.AccessToken(
+                        "access-token", 3600, Optional.of("refresh-token"), Optional.empty()));
+
+        LinkedInConnection connection = fixture.service.complete(fixture.start(), "authorization-code");
+
+        assertThat(connection.status()).isEqualTo(LinkedInAuthorization.STATUS_ACTIVE);
+        assertThat(connection.scopes()).isEqualTo("openid profile");
+        assertThat(existing.getEncryptedAccessToken()).isEqualTo("enc-access");
+        assertThat(existing.getEncryptedRefreshToken()).isEqualTo("enc-refresh");
+        verify(fixture.authorizationRepository).saveAndFlush(existing);
+
+        fixture.service.disconnect(USER_ID);
+        verify(fixture.transactionRepository).deletePendingForUser(USER_ID);
+        verify(fixture.authorizationRepository).delete(existing);
+    }
+
     private void assertReplayRejected(Fixture fixture) {
         assertThatThrownBy(() -> fixture.service.complete(fixture.state.get(), "authorization-code"))
                 .isInstanceOf(LinkedInOAuthException.class)
@@ -77,6 +122,10 @@ class LinkedInOAuthServiceTest {
         private final LinkedInOAuthService service;
 
         private Fixture() {
+            this(NOW.plusSeconds(600));
+        }
+
+        private Fixture(Instant stateExpiresAt) {
             AppProperties properties = new AppProperties();
             properties.getLinkedin().setScopes("openid profile");
             when(oauthClient.authorizationUri(anyString(), anyString()))
@@ -92,7 +141,7 @@ class LinkedInOAuthServiceTest {
                             invocation.getArgument(0),
                             "openid profile",
                             NOW,
-                            NOW.plusSeconds(600))));
+                            stateExpiresAt)));
             when(authorizationRepository.findByAppUser_Id(USER_ID)).thenReturn(Optional.empty());
             when(oauthClient.exchangeAuthorizationCode("authorization-code"))
                     .thenReturn(new LinkedInOAuthClient.AccessToken(
