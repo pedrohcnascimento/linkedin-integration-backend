@@ -55,6 +55,12 @@ class LinkedInOAuthHttpClientTest {
         properties.getLinkedin().setRedirectUri("http://localhost:8080/api/v1/linkedin/oauth/callback");
         assertThat(client.authorizationUri("state-1", "openid profile").getHost()).isEqualTo("www.linkedin.com");
 
+        LinkedInOAuthHttpClient prodClient =
+                new LinkedInOAuthHttpClient(RestClient.builder().build(), properties, false);
+        assertThatThrownBy(() -> prodClient.authorizationUri("state-1", "openid profile"))
+                .isInstanceOf(LinkedInOAuthConfigurationException.class)
+                .hasMessage("LinkedIn redirect URI must be a trusted HTTPS callback.");
+
         properties.getLinkedin().setRedirectUri("http://evil.example.com/callback");
         assertThatThrownBy(() -> client.authorizationUri("state-1", "openid profile"))
                 .isInstanceOf(LinkedInOAuthConfigurationException.class)

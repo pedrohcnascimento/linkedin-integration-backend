@@ -121,13 +121,24 @@ class LinkedInPublishingHttpClientTest {
     }
 
     @Test
-    void rejectsMissingAccessTokenBeforeMakingNetworkRequest() {
+    void rejectsMissingAccessTokenAndNonHttpsBaseUrlBeforeMakingNetworkRequest() {
         assertThatThrownBy(() -> client.publish(
                 "",
                 new LinkedInPublicationCommand(
                         "member-123", "Hello LinkedIn", LinkedInPublicationCommand.Visibility.PUBLIC)))
                 .isInstanceOf(LinkedInPublishingException.class)
                 .hasMessage("LinkedIn access token is missing.");
+
+        AppProperties nonHttpsProps = properties();
+        nonHttpsProps.getLinkedin().setApiBaseUrl("http://api.linkedin.com");
+        LinkedInPublishingHttpClient prodClient =
+                new LinkedInPublishingHttpClient(RestClient.builder().build(), nonHttpsProps, false);
+        assertThatThrownBy(() -> prodClient.publish(
+                "access-token",
+                new LinkedInPublicationCommand(
+                        "member-123", "Hello LinkedIn", LinkedInPublicationCommand.Visibility.PUBLIC)))
+                .isInstanceOfSatisfying(LinkedInPublishingException.class,
+                        ex -> assertThat(ex.getFailureCode()).isEqualTo("LINKEDIN_API_BASE_URL_INVALID"));
     }
 
     private AppProperties properties() {

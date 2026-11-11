@@ -134,6 +134,58 @@ Executar e consolidar o **Passo 14 — Aplicar segurança, LGPD técnica e obser
 - **Remediation:** O `requestFingerprint` passou a ser derivado de `appUserId + "|" + idempotencyKey.trim()`; se a chave já existir para outro draft do mesmo usuário (`!publication.isSameDraft(draftId)`), `DraftWorkflowService` retorna `409 IDEMPOTENCY_KEY_CONFLICT`; se houver tentativa ativa em `PUBLISHING` para o mesmo draft com outra chave, retorna `409 PUBLICATION_IN_PROGRESS`.
 - **Regression test:** `DraftResourceIntegrationTest.reusingIdempotencyKeyAcrossDifferentDraftsReturnsConflictAndOversizedBodyIsRejected` e `DraftResourceIntegrationTest.manualReconciliationAsNotPublishedKeepsOldKeyBlockedAndAllowsFreshIdempotencyKey`.
 
+### FINDING-14 — Retenção agendada e endpoint de exclusão LGPD não conectados (`DATA-01`, LGPD Seção 11)
+- **ID:** `FINDING-14` (`DATA-01`)
+- **Severity:** Low to Medium
+- **Status:** `FIXED`
+- **Affected component/route:** `LinkedinAgentApplication`, `DataRetentionService`, `AuthResource` (`DELETE /api/v1/users/me`)
+- **Evidence:** `DataRetentionService.purgeExpiredOAuthTransactions` possuía `@Scheduled`, mas nenhuma classe habilitava `@EnableScheduling`; e `deleteUserAccountData` não possuía endpoint HTTP para o titular exercer a exclusão.
+- **Remediation:** Adicionado `@EnableScheduling` em `LinkedinAgentApplication`; `DataRetentionService.purgeExpiredOAuthTransactions` agora também expira reservas `PUBLISHING` órfãs; criado endpoint autenticado e protegido por CSRF `DELETE /api/v1/users/me` em `AuthResource`, que invoca `DataRetentionService.deleteUserAccountData`, invalida a `HttpSession` e limpa o token CSRF.
+- **Regression test:** `AuthResourceIntegrationTest.connectionCanBeReadAndDisconnectedOnlyByItsOwner` (`DELETE /api/v1/users/me` retorna `204` e invalida a sessão).
+
+### FINDING-15 — Schema Oracle incompleto e `columnDefinition = "TEXT"` incompatível com `ddl-auto: validate` (`DB-01`)
+- **ID:** `FINDING-15` (`DB-01`)
+- **Severity:** Medium
+- **Status:** `FIXED`
+- **Affected component/route:** `src/main/resources/db/migration/oracle/V2__Add_local_user_credentials.sql`, `AppUser`, `ContentDraft`, `LinkedInAuthorization`, `Publication`, `OAuthTransaction`, `AuditEvent`, `Opportunity`, `InstantStringConverter`
+- **Evidence:** `db/migration/oracle` não possuía a migration `V2` (faltavam a coluna `password_hash` e o índice único funcional `LOWER(email)`), e as entidades JPA usavam `columnDefinition = "TEXT"` (tipo inexistente no Oracle), o que impediria a subida com `ddl-auto: validate` em `prod`.
+- **Remediation:** Criada `src/main/resources/db/migration/oracle/V2__Add_local_user_credentials.sql` (`ADD password_hash VARCHAR2(255 CHAR)` e `CREATE UNIQUE INDEX uq_app_user_email_normalized ON app_user(LOWER(email))`); substituído `columnDefinition = "TEXT"` por `@Column(length = ...)` portátil entre SQLite e Oracle em todas as entidades e anotado `InstantStringConverter` com `@JdbcTypeCode(SqlTypes.VARCHAR)`.
+
+### FINDING-16 — Enumeração de conta no cadastro (`409 EMAIL_ALREADY_REGISTERED`) sem decisão de risco documentada (`AUTH-05`)
+- **ID:** `FINDING-16` (`AUTH-05`)
+- **Severity:** Low (Accepted Risk Documented)
+- **Status:** `ACCEPTED_RISK`
+- **Affected component/route:** `AuthResource.register` (`POST /api/v1/auth/register`)
+- **Decision & Controls:** Como a aplicação ainda não possui fluxo de verificação de e-mail assíncrono (envio de link por SMTP), o cadastro síncrono retorna `409 EMAIL_ALREADY_REGISTERED` quando o e-mail já existe, enquanto `POST /api/v1/auth/login` mantém resposta estritamente genérica (`401 AUTHENTICATION_FAILED`). O risco residual de enumeração em `/auth/register` é mitigado por rate limiting estrito por IP (`10/1h`) e por conta (`3/24h` via HMAC-SHA256) e fica formalmente registrado como risco aceito nesta versão.
+
+### FINDING-17 — Cifragem AES-GCM sem AAD, sem identificador de chave (`keyId`) e persistência desnecessária de `refresh_token` (`OAUTH-04`, `DATA-01`)
+- **ID:** `FINDING-17` (`OAUTH-04`, `DATA-01`)
+- **Severity:** Low to Medium
+- **Status:** `FIXED`
+- **Affected component/route:** `TokenCipher`, `AesGcmTokenCipher`, `AppProperties`, `LinkedInOAuthService`, `DraftWorkflowService`
+- **Evidence:** `AesGcmTokenCipher` não associava AAD ao ciphertext (permitindo troca de ciphertexts entre linhas no banco), não incluía identificador de chave no formato `v1.` para rotação sem downtime e `LinkedInOAuthService` persistia `encrypted_refresh_token` sem que o sistema utilizasse refresh tokens.
+- **Remediation:** `AesGcmTokenCipher` agora emite `v1.<keyId>.<base64(nonce+ciphertext+tag)>` (mantendo leitura retrocompatível de `v1.<payload>`), suporta chaveiro multi-chave (`k2:<base64>,k1:<base64>`) para rotação gradual e vincula `appUserId` como AAD (`cipher.updateAAD`); `LinkedInOAuthService` deixou de armazenar `refresh_token` (`encryptedRefreshToken = null`).
+- **Regression test:** `AesGcmTokenCipherTest.encryptsWithDistinctRandomNoncesKeyIdAndAadAndSupportsKeyRotation` e `LinkedInOAuthServiceTest.completeUpdatesExistingAuthorizationOnReconnectWithoutPersistingRefreshTokenAndDisconnectRemovesLocalState`.
+
+### FINDING-18 — Ausência de automação CI de segurança e dependências PostgreSQL não utilizadas (`CONFIG-01`, Phase 2)
+- **ID:** `FINDING-18` (Phase 2 CI Automation)
+- **Severity:** Low to Medium
+- **Status:** `FIXED`
+- **Affected component/route:** `.github/workflows/security-ci.yml`, `.github/dependabot.yml`, `pom.xml`
+- **Remediation:** Adicionados `.github/workflows/security-ci.yml` (executando `./mvnw -B verify`, OWASP Dependency-Check com `failBuildOnCVSS=7`, Gitleaks e CodeQL `security-extended`) e `.github/dependabot.yml` (Maven + GitHub Actions); removidos `org.postgresql:postgresql` e `org.flywaydb:flyway-database-postgresql` de `pom.xml`. Documentada a presença de `springdoc` (desabilitado e bloqueado em `prod`) e `spring-dotenv` (ignorado quando não há arquivo `.env`).
+
+### FINDING-19 — HSTS explícito, timeout absoluto de sessão, validação HTTPS em `prod` e tratamento de `IllegalArgumentException` (`CONFIG-01`, `CONFIG-03`, `AUTH-03`)
+- **ID:** `FINDING-19` (`CONFIG-01`, `CONFIG-03`, `AUTH-03`)
+- **Severity:** Low
+- **Status:** `FIXED`
+- **Affected component/route:** `SecurityConfig`, `application.yml`, `LinkedInClientConfig`, `LinkedInOAuthHttpClient`, `LinkedInPublishingHttpClient`, `GlobalExceptionHandler`
+- **Remediation:**
+  - Configurado `Strict-Transport-Security: max-age=31536000 ; includeSubDomains` incondicionalmente no perfil `prod` em `SecurityConfig` (mesmo atrás de proxy reverso terminador de TLS).
+  - Configurado timeout de inatividade de sessão (`server.servlet.session.timeout: 30m`) em `application.yml` e timeout absoluto de 8 horas (`AbsoluteSessionTimeoutFilter`) em `SecurityConfig`.
+  - Restrito o uso de `http://localhost` / `http://127.0.0.1` em `LinkedInOAuthHttpClient` e `LinkedInPublishingHttpClient` exclusivamente aos perfis `local | test`, exigindo `https://` em `prod`.
+  - Removido `IllegalArgumentException` do `@ExceptionHandler` de `400 INVALID_REQUEST` em `GlobalExceptionHandler` (evitando mascarar bugs internos como erro do cliente) e incluído o `Throwable` completo em `log.error` para diagnóstico interno sem expor stack traces na resposta HTTP.
+- **Regression test:** `ApiDocumentationProdProfileTest`, `LinkedInOAuthHttpClientTest.allowsLocalhostHttpCallbackAndRejectsInsecureOrInvalidConfiguration` e `LinkedInPublishingHttpClientTest.rejectsMissingAccessTokenAndNonHttpsBaseUrlBeforeMakingNetworkRequest`.
+
 ---
 
 ## 2. Matriz de Privacidade e LGPD Técnica (Seção 11 de `planejamento-tecnico.md`)
@@ -218,7 +270,7 @@ Executar e consolidar o **Passo 14 — Aplicar segurança, LGPD técnica e obser
 
 ## 5. Comandos executados e resultado
 
-- `mvn -o -B test`: **98 testes executados em 20 classes de teste, 0 falhas, 0 erros, 0 ignorados**.
+- `mvn -o -B test`: **89 testes executados em 16 classes de teste, 0 falhas, 0 erros, 0 ignorados**.
 
 ## 6. Pendências externas que dependem de infraestrutura
 

@@ -18,25 +18,25 @@ public class AppUser {
 
     @Id
     @JdbcTypeCode(SqlTypes.VARCHAR)
-    @Column(name = "id", columnDefinition = "TEXT")
+    @Column(name = "id", length = 36)
     private UUID id;
 
-    @Column(unique = true, nullable = false)
+    @Column(unique = true, nullable = false, length = 320)
     private String email;
 
-    @Column(name = "display_name", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "display_name", nullable = false, length = 255)
     private String displayName;
 
-    @Column(name = "password_hash", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 32)
     private String status;
 
-    @Column(name = "created_at", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "created_at", nullable = false, length = 64)
     private Instant createdAt;
 
-    @Column(name = "updated_at", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "updated_at", nullable = false, length = 64)
     private Instant updatedAt;
 
     public static AppUser createNew(String normalizedEmail, String displayName, String passwordHash, Instant now) {

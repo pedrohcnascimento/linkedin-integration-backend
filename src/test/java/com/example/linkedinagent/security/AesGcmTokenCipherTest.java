@@ -40,15 +40,28 @@ class AesGcmTokenCipherTest {
     }
 
     @Test
-    void encryptsWithDistinctRandomNoncesAndDecryptsBackToOriginalPlaintext() {
-        AesGcmTokenCipher cipher = cipherWithKey(VALID_KEY);
+    void encryptsWithDistinctRandomNoncesKeyIdAndAadAndSupportsKeyRotation() {
+        AppProperties properties = new AppProperties();
+        properties.getSecurity().setTokenEncryptionKey("k1:" + VALID_KEY);
+        AesGcmTokenCipher cipher = new AesGcmTokenCipher(properties);
 
-        String first = cipher.encrypt("linkedin-access-token");
-        String second = cipher.encrypt("linkedin-access-token");
+        String first = cipher.encrypt("linkedin-access-token", "user-123");
+        String second = cipher.encrypt("linkedin-access-token", "user-123");
 
-        assertThat(first).startsWith("v1.").isNotEqualTo(second);
-        assertThat(cipher.decrypt(first)).isEqualTo("linkedin-access-token");
-        assertThat(cipher.decrypt(second)).isEqualTo("linkedin-access-token");
+        assertThat(first).startsWith("v1.k1.").isNotEqualTo(second);
+        assertThat(cipher.decrypt(first, "user-123")).isEqualTo("linkedin-access-token");
+        assertThat(cipher.decrypt(second, "user-123")).isEqualTo("linkedin-access-token");
+        assertThatThrownBy(() -> cipher.decrypt(first, "different-user-456"))
+                .isInstanceOf(TokenEncryptionException.class)
+                .hasMessage("Unable to decrypt stored LinkedIn credentials.");
+
+        // Rotate to k2 while keeping k1 in the key ring for decrypting existing rows
+        properties.getSecurity().setTokenEncryptionKey("k2:" + OTHER_KEY + ", k1:" + VALID_KEY);
+        AesGcmTokenCipher rotatedCipher = new AesGcmTokenCipher(properties);
+        String encryptedWithK2 = rotatedCipher.encrypt("new-token", "user-123");
+        assertThat(encryptedWithK2).startsWith("v1.k2.");
+        assertThat(rotatedCipher.decrypt(first, "user-123")).isEqualTo("linkedin-access-token");
+        assertThat(rotatedCipher.decrypt(encryptedWithK2, "user-123")).isEqualTo("new-token");
     }
 
     @Test

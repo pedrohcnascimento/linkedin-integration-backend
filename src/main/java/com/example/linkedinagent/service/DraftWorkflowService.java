@@ -250,7 +250,8 @@ public class DraftWorkflowService {
                 .filter(value -> value.isUsableAt(now))
                 .orElseThrow(() -> error("LINKEDIN_CONNECTION_REQUIRED",
                         "An active LinkedIn connection is required.", HttpStatus.UNPROCESSABLE_ENTITY));
-        String accessToken = tokenCipher.decrypt(authorization.getEncryptedAccessToken());
+        String accessToken = tokenCipher.decrypt(
+                authorization.getEncryptedAccessToken(), appUserId.toString());
 
         Publication publication = Publication.reserve(AppUser.reference(appUserId), draft, fingerprint, now);
         try {

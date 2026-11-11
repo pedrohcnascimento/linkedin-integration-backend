@@ -14,8 +14,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
@@ -49,6 +53,12 @@ class AuthResourceIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private SecurityFilterChain securityFilterChain;
+
+    @Autowired
+    private CsrfTokenRepository csrfTokenRepository;
+
     @MockitoBean
     private LinkedInOAuthClient linkedInOAuthClient;
 
@@ -58,6 +68,10 @@ class AuthResourceIntegrationTest {
     @BeforeEach
     void allowRequestsInExistingAuthenticationScenarios() {
         when(rateLimitStore.acquire(anyList())).thenReturn(Optional.empty());
+        securityFilterChain.getFilters().stream()
+                .filter(CsrfFilter.class::isInstance)
+                .map(CsrfFilter.class::cast)
+                .forEach(filter -> ReflectionTestUtils.setField(filter, "tokenRepository", csrfTokenRepository));
     }
 
     @Test
@@ -654,6 +668,12 @@ class AuthResourceIntegrationTest {
         mockMvc.perform(get("/api/v1/linkedin/connection").session(firstSession))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.connected").value(false));
+
+        mockMvc.perform(MockMvcRequestBuilders
+                        .delete("/api/v1/users/me").session(firstSession).with(csrf()))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/users/me").session(firstSession))
+                .andExpect(status().isUnauthorized());
     }
 
     private MockHttpSession login(String email) throws Exception {

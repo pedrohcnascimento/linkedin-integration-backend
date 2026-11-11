@@ -11,6 +11,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
@@ -42,7 +43,8 @@ class ApiDocumentationProdProfileTest {
     @Test
     void apiDocumentationEndpointsAreNotAvailableInProdProfile() throws Exception {
         mockMvc.perform(get("/api-docs"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("Strict-Transport-Security", "max-age=31536000 ; includeSubDomains"));
         mockMvc.perform(get("/swagger-ui.html"))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/swagger-ui/index.html"))

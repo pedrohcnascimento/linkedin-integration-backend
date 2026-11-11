@@ -7,6 +7,8 @@ import com.example.linkedinagent.client.LinkedInPublishingHttpClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
@@ -30,14 +32,18 @@ public class LinkedInClientConfig {
     @Bean
     LinkedInOAuthClient linkedInOAuthClient(
             @Qualifier("linkedinRestClient") RestClient restClient,
-            AppProperties appProperties) {
-        return new LinkedInOAuthHttpClient(restClient, appProperties);
+            AppProperties appProperties,
+            Environment environment) {
+        boolean allowLoopbackHttpCallback = environment.acceptsProfiles(Profiles.of("local | test"));
+        return new LinkedInOAuthHttpClient(restClient, appProperties, allowLoopbackHttpCallback);
     }
 
     @Bean
     LinkedInPublishingClient linkedInPublishingClient(
             @Qualifier("linkedinRestClient") RestClient restClient,
-            AppProperties appProperties) {
-        return new LinkedInPublishingHttpClient(restClient, appProperties);
+            AppProperties appProperties,
+            Environment environment) {
+        boolean allowLoopbackHttpBaseUrl = environment.acceptsProfiles(Profiles.of("local | test"));
+        return new LinkedInPublishingHttpClient(restClient, appProperties, allowLoopbackHttpBaseUrl);
     }
 }

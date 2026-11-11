@@ -95,7 +95,6 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler({
-            IllegalArgumentException.class,
             MethodArgumentNotValidException.class,
             HttpMessageNotReadableException.class,
             MethodArgumentTypeMismatchException.class
@@ -112,7 +111,7 @@ public class GlobalExceptionHandler {
                 || exception instanceof AuthenticationException) {
             throw exception;
         }
-        log.error("Unhandled runtime exception ({})", exception.getClass().getSimpleName());
+        log.error("Unhandled runtime exception ({})", exception.getClass().getSimpleName(), exception);
         return ResponseEntity.internalServerError()
                 .body(new ApiError("INTERNAL_ERROR", "An unexpected error occurred."));
     }

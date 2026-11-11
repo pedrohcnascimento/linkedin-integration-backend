@@ -136,19 +136,15 @@ public class LinkedInOAuthService {
             throw new LinkedInOAuthException("LinkedIn returned an invalid token expiration.");
         }
         String scopes = accessToken.scopes().filter(value -> !value.isBlank()).orElse(transaction.getScopes());
-        String encryptedRefreshToken = accessToken.refreshToken()
-                .filter(value -> !value.isBlank())
-                .map(tokenCipher::encrypt)
-                .orElse(null);
-        String encryptedAccessToken = tokenCipher.encrypt(accessToken.value());
-
         UUID appUserId = transaction.getAppUser().getId();
+        String encryptedAccessToken = tokenCipher.encrypt(accessToken.value(), appUserId.toString());
         LinkedInAuthorization authorization = authorizationRepository.findByAppUser_Id(appUserId)
                 .orElseGet(() -> LinkedInAuthorization.createForUser(AppUser.reference(appUserId), now));
+        // Minimize credential surface: refresh tokens are not stored because automatic refresh is out of scope.
         authorization.refreshTokens(
                 member.subject(),
                 encryptedAccessToken,
-                encryptedRefreshToken,
+                null,
                 scopes,
                 expiresAt,
                 now);

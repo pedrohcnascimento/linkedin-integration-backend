@@ -24,10 +24,19 @@ public class LinkedInOAuthHttpClient implements LinkedInOAuthClient {
 
     private final RestClient restClient;
     private final AppProperties.Linkedin properties;
+    private final boolean allowLoopbackHttpCallback;
 
     public LinkedInOAuthHttpClient(RestClient restClient, AppProperties appProperties) {
+        this(restClient, appProperties, true);
+    }
+
+    public LinkedInOAuthHttpClient(
+            RestClient restClient,
+            AppProperties appProperties,
+            boolean allowLoopbackHttpCallback) {
         this.restClient = restClient;
         this.properties = appProperties.getLinkedin();
+        this.allowLoopbackHttpCallback = allowLoopbackHttpCallback;
     }
 
     @Override
@@ -106,7 +115,8 @@ public class LinkedInOAuthHttpClient implements LinkedInOAuthClient {
             throw new LinkedInOAuthConfigurationException("LinkedIn redirect URI is invalid.");
         }
         boolean secureScheme = "https".equalsIgnoreCase(callback.getScheme());
-        boolean localHttpCallback = "http".equalsIgnoreCase(callback.getScheme())
+        boolean localHttpCallback = allowLoopbackHttpCallback
+                && "http".equalsIgnoreCase(callback.getScheme())
                 && ("localhost".equalsIgnoreCase(callback.getHost())
                 || "127.0.0.1".equals(callback.getHost())
                 || "::1".equals(callback.getHost()));

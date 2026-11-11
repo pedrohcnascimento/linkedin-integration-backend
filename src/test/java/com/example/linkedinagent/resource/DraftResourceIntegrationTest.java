@@ -78,7 +78,7 @@ class DraftResourceIntegrationTest {
         authorization.setStatus(LinkedInAuthorization.STATUS_ACTIVE);
         authorization.setExpiresAt(Instant.now().plusSeconds(3600));
         when(authorizationRepository.findByAppUser_Id(any())).thenReturn(Optional.of(authorization));
-        when(tokenCipher.decrypt("encrypted-token")).thenReturn("access-token");
+        when(tokenCipher.decrypt(any(), any())).thenReturn("access-token");
         when(publishingClient.publish(any(), any())).thenReturn(new PublicationResult("urn:li:share:123"));
     }
 

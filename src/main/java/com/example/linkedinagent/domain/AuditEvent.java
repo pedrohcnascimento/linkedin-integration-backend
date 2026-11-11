@@ -31,29 +31,29 @@ public class AuditEvent {
 
     @Id
     @JdbcTypeCode(SqlTypes.VARCHAR)
-    @Column(name = "id", columnDefinition = "TEXT")
+    @Column(name = "id", length = 36)
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "app_user_id")
     private AppUser appUser;
 
-    @Column(name = "event_type", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "event_type", nullable = false, length = 128)
     private String eventType;
 
-    @Column(name = "resource_type", columnDefinition = "TEXT")
+    @Column(name = "resource_type", length = 128)
     private String resourceType;
 
-    @Column(name = "resource_id", columnDefinition = "TEXT")
+    @Column(name = "resource_id", length = 255)
     private String resourceId;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 32)
     private String outcome;
 
-    @Column(name = "occurred_at", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "occurred_at", nullable = false, length = 64)
     private Instant occurredAt;
 
-    @Column(name = "metadata_sanitized", columnDefinition = "TEXT")
+    @Column(name = "metadata_sanitized", length = 4000)
     private String metadataSanitized;
 
     public static AuditEvent record(

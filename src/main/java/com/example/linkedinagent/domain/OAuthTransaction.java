@@ -19,26 +19,26 @@ public class OAuthTransaction {
 
     @Id
     @JdbcTypeCode(SqlTypes.VARCHAR)
-    @Column(name = "id", columnDefinition = "TEXT")
+    @Column(name = "id", length = 36)
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "app_user_id", nullable = false)
     private AppUser appUser;
 
-    @Column(name = "state_hash", nullable = false, unique = true)
+    @Column(name = "state_hash", nullable = false, unique = true, length = 255)
     private String stateHash;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 1000)
     private String scopes;
 
-    @Column(name = "expires_at", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "expires_at", nullable = false, length = 64)
     private Instant expiresAt;
 
-    @Column(name = "consumed_at", columnDefinition = "TEXT")
+    @Column(name = "consumed_at", length = 64)
     private Instant consumedAt;
 
-    @Column(name = "created_at", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "created_at", nullable = false, length = 64)
     private Instant createdAt;
 
     public static OAuthTransaction start(

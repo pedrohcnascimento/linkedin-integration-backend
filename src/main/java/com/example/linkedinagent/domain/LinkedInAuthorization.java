@@ -23,35 +23,35 @@ public class LinkedInAuthorization {
 
     @Id
     @JdbcTypeCode(SqlTypes.VARCHAR)
-    @Column(name = "id", columnDefinition = "TEXT")
+    @Column(name = "id", length = 36)
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "app_user_id", nullable = false, unique = true)
     private AppUser appUser;
 
-    @Column(name = "member_subject", columnDefinition = "TEXT")
+    @Column(name = "member_subject", length = 255)
     private String memberSubject;
 
-    @Column(name = "encrypted_access_token", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "encrypted_access_token", nullable = false, length = 4000)
     private String encryptedAccessToken;
 
-    @Column(name = "encrypted_refresh_token", columnDefinition = "TEXT")
+    @Column(name = "encrypted_refresh_token", length = 4000)
     private String encryptedRefreshToken;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 1000)
     private String scopes;
 
-    @Column(name = "expires_at", columnDefinition = "TEXT")
+    @Column(name = "expires_at", length = 64)
     private Instant expiresAt;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 32)
     private String status;
 
-    @Column(name = "created_at", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "created_at", nullable = false, length = 64)
     private Instant createdAt;
 
-    @Column(name = "updated_at", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "updated_at", nullable = false, length = 64)
     private Instant updatedAt;
 
     public static LinkedInAuthorization createForUser(AppUser appUser, Instant now) {

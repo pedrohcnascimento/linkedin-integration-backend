@@ -17,10 +17,19 @@ public class LinkedInPublishingHttpClient implements LinkedInPublishingClient {
     private static final String POSTS_PATH = "/rest/posts";
     private final RestClient restClient;
     private final AppProperties.Linkedin properties;
+    private final boolean allowLoopbackHttpBaseUrl;
 
     public LinkedInPublishingHttpClient(RestClient restClient, AppProperties appProperties) {
+        this(restClient, appProperties, true);
+    }
+
+    public LinkedInPublishingHttpClient(
+            RestClient restClient,
+            AppProperties appProperties,
+            boolean allowLoopbackHttpBaseUrl) {
         this.restClient = restClient;
         this.properties = appProperties.getLinkedin();
+        this.allowLoopbackHttpBaseUrl = allowLoopbackHttpBaseUrl;
     }
 
     @Override
@@ -85,13 +94,31 @@ public class LinkedInPublishingHttpClient implements LinkedInPublishingClient {
 
     private String requiredBaseUrl() {
         String baseUrl = properties.getApiBaseUrl();
-        if (baseUrl == null || baseUrl.isBlank()
-                || !(baseUrl.startsWith("https://") || baseUrl.startsWith("http://"))) {
+        if (baseUrl == null || baseUrl.isBlank()) {
             throw new LinkedInPublishingException(
                     "LINKEDIN_API_BASE_URL_INVALID",
                     "LinkedIn API base URL is not configured correctly.");
         }
-        return baseUrl.replaceAll("/+$", "");
+        java.net.URI parsed;
+        try {
+            parsed = java.net.URI.create(baseUrl.trim());
+        } catch (IllegalArgumentException exception) {
+            throw new LinkedInPublishingException(
+                    "LINKEDIN_API_BASE_URL_INVALID",
+                    "LinkedIn API base URL is not configured correctly.");
+        }
+        boolean https = "https".equalsIgnoreCase(parsed.getScheme());
+        boolean loopbackHttp = allowLoopbackHttpBaseUrl
+                && "http".equalsIgnoreCase(parsed.getScheme())
+                && ("localhost".equalsIgnoreCase(parsed.getHost())
+                || "127.0.0.1".equals(parsed.getHost())
+                || "::1".equals(parsed.getHost()));
+        if ((!https && !loopbackHttp) || parsed.getHost() == null || parsed.getRawUserInfo() != null) {
+            throw new LinkedInPublishingException(
+                    "LINKEDIN_API_BASE_URL_INVALID",
+                    "LinkedIn API base URL is not configured correctly.");
+        }
+        return baseUrl.trim().replaceAll("/+$", "");
     }
 
     private LinkedInPublishingException providerHttpException(int status) {

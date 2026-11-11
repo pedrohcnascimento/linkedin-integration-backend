@@ -40,7 +40,7 @@ class LinkedInOAuthServiceTest {
     @Test
     void encryptionFailureConsumesStateAndCannotBeRetried() {
         Fixture fixture = new Fixture();
-        when(fixture.tokenCipher.encrypt("access-token"))
+        when(fixture.tokenCipher.encrypt("access-token", USER_ID.toString()))
                 .thenThrow(new TokenEncryptionException("encryption unavailable"));
 
         assertThatThrownBy(() -> fixture.service.complete(fixture.start(), "authorization-code"))
@@ -52,7 +52,7 @@ class LinkedInOAuthServiceTest {
     @Test
     void persistenceFailureConsumesStateAndCannotBeRetried() {
         Fixture fixture = new Fixture();
-        when(fixture.tokenCipher.encrypt("access-token")).thenReturn("encrypted-token");
+        when(fixture.tokenCipher.encrypt("access-token", USER_ID.toString())).thenReturn("encrypted-token");
         doThrow(new IllegalStateException("database unavailable"))
                 .when(fixture.authorizationRepository)
                 .saveAndFlush(any(LinkedInAuthorization.class));
@@ -82,13 +82,12 @@ class LinkedInOAuthServiceTest {
     }
 
     @Test
-    void completeUpdatesExistingAuthorizationOnReconnectAndDisconnectRemovesLocalState() {
+    void completeUpdatesExistingAuthorizationOnReconnectWithoutPersistingRefreshTokenAndDisconnectRemovesLocalState() {
         Fixture fixture = new Fixture();
         LinkedInAuthorization existing = LinkedInAuthorization.createForUser(
                 AppUser.reference(USER_ID), NOW.minusSeconds(7200));
         when(fixture.authorizationRepository.findByAppUser_Id(USER_ID)).thenReturn(Optional.of(existing));
-        when(fixture.tokenCipher.encrypt("access-token")).thenReturn("enc-access");
-        when(fixture.tokenCipher.encrypt("refresh-token")).thenReturn("enc-refresh");
+        when(fixture.tokenCipher.encrypt("access-token", USER_ID.toString())).thenReturn("enc-access");
         when(fixture.oauthClient.exchangeAuthorizationCode("authorization-code"))
                 .thenReturn(new LinkedInOAuthClient.AccessToken(
                         "access-token", 3600, Optional.of("refresh-token"), Optional.empty()));
@@ -98,7 +97,7 @@ class LinkedInOAuthServiceTest {
         assertThat(connection.status()).isEqualTo(LinkedInAuthorization.STATUS_ACTIVE);
         assertThat(connection.scopes()).isEqualTo("openid profile");
         assertThat(existing.getEncryptedAccessToken()).isEqualTo("enc-access");
-        assertThat(existing.getEncryptedRefreshToken()).isEqualTo("enc-refresh");
+        assertThat(existing.getEncryptedRefreshToken()).isNull();
         verify(fixture.authorizationRepository).saveAndFlush(existing);
 
         fixture.service.disconnect(USER_ID);

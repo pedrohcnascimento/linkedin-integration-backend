@@ -10,6 +10,7 @@ import com.example.linkedinagent.dto.AuthDtos.RegisterRequest;
 import com.example.linkedinagent.dto.AuthDtos.UserResponse;
 import com.example.linkedinagent.security.AppUserPrincipal;
 import com.example.linkedinagent.security.RateLimitInterceptor;
+import com.example.linkedinagent.service.DataRetentionService;
 import com.example.linkedinagent.service.RateLimitService;
 import com.example.linkedinagent.service.RegistrationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,7 +23,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -37,6 +40,7 @@ import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -60,6 +64,7 @@ public class AuthResource {
     private final SessionAuthenticationStrategy sessionAuthenticationStrategy;
     private final CsrfTokenRepository csrfTokenRepository;
     private final RateLimitService rateLimitService;
+    private final DataRetentionService dataRetentionService;
     private final Set<String> trustedProxyIps;
 
     public AuthResource(
@@ -70,12 +75,27 @@ public class AuthResource {
             CsrfTokenRepository csrfTokenRepository,
             RateLimitService rateLimitService,
             AppProperties appProperties) {
+        this(registrationService, authenticationManager, securityContextRepository,
+                sessionAuthenticationStrategy, csrfTokenRepository, rateLimitService, null, appProperties);
+    }
+
+    @Autowired
+    public AuthResource(
+            RegistrationService registrationService,
+            AuthenticationManager authenticationManager,
+            SecurityContextRepository securityContextRepository,
+            SessionAuthenticationStrategy sessionAuthenticationStrategy,
+            CsrfTokenRepository csrfTokenRepository,
+            RateLimitService rateLimitService,
+            DataRetentionService dataRetentionService,
+            AppProperties appProperties) {
         this.registrationService = registrationService;
         this.authenticationManager = authenticationManager;
         this.securityContextRepository = securityContextRepository;
         this.sessionAuthenticationStrategy = sessionAuthenticationStrategy;
         this.csrfTokenRepository = csrfTokenRepository;
         this.rateLimitService = rateLimitService;
+        this.dataRetentionService = dataRetentionService;
         this.trustedProxyIps = WebConfig.parseTrustedProxyIps(appProperties.getSecurity().getTrustedProxyIps());
     }
 
@@ -230,5 +250,28 @@ public class AuthResource {
     })
     public UserResponse currentUser(@AuthenticationPrincipal AppUserPrincipal user) {
         return UserResponse.from(user);
+    }
+
+    @DeleteMapping("/users/me")
+    @Operation(summary = "Excluir conta local e dados associados (LGPD)", description = "Remove a conta local autenticada, tokens cifrados do LinkedIn, transações OAuth, rascunhos e histórico de publicação, anonimizando a trilha de auditoria e invalidando a sessão HTTP.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Conta local e dados associados removidos (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "401", description = "Sessão local ausente ou expirada (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Token CSRF ausente ou inválido (sem corpo).", content = @Content)
+    })
+    public ResponseEntity<Void> deleteCurrentUser(
+            @AuthenticationPrincipal AppUserPrincipal user,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        if (dataRetentionService != null) {
+            dataRetentionService.deleteUserAccountData(user.getId());
+        }
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
+        SecurityContextHolder.clearContext();
+        csrfTokenRepository.saveToken(null, request, response);
+        return ResponseEntity.noContent().build();
     }
 }

@@ -26,7 +26,7 @@ public class Publication {
 
     @Id
     @JdbcTypeCode(SqlTypes.VARCHAR)
-    @Column(name = "id", columnDefinition = "TEXT")
+    @Column(name = "id", length = 36)
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -37,22 +37,22 @@ public class Publication {
     @JoinColumn(name = "draft_id")
     private ContentDraft draft;
 
-    @Column(name = "external_post_id", columnDefinition = "TEXT")
+    @Column(name = "external_post_id", length = 255)
     private String externalPostId;
 
-    @Column(name = "request_fingerprint", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "request_fingerprint", nullable = false, length = 255)
     private String requestFingerprint;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 32)
     private String status;
 
-    @Column(name = "failure_code", columnDefinition = "TEXT")
+    @Column(name = "failure_code", length = 255)
     private String failureCode;
 
-    @Column(name = "published_at", columnDefinition = "TEXT")
+    @Column(name = "published_at", length = 64)
     private Instant publishedAt;
 
-    @Column(name = "created_at", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "created_at", nullable = false, length = 64)
     private Instant createdAt;
 
     public static Publication reserve(AppUser owner, ContentDraft draft, String requestFingerprint, Instant now) {

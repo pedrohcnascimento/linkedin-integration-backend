@@ -60,7 +60,7 @@ class DraftWorkflowServiceTest {
         authorization.setStatus(LinkedInAuthorization.STATUS_ACTIVE);
         authorization.setExpiresAt(NOW.plusSeconds(3600));
         when(authorizationRepository.findByAppUser_Id(userId)).thenReturn(Optional.of(authorization));
-        when(tokenCipher.decrypt("encrypted-token")).thenReturn("access-token");
+        when(tokenCipher.decrypt("encrypted-token", userId.toString())).thenReturn("access-token");
         when(publicationRepository.saveAndFlush(any()))
                 .thenThrow(new DataIntegrityViolationException("unique fingerprint already exists"));
 
@@ -161,7 +161,7 @@ class DraftWorkflowServiceTest {
         authorization.setStatus(LinkedInAuthorization.STATUS_ACTIVE);
         authorization.setExpiresAt(NOW.plusSeconds(3600));
         when(authorizationRepository.findByAppUser_Id(userId)).thenReturn(Optional.of(authorization));
-        when(tokenCipher.decrypt("encrypted-token")).thenReturn("access-token");
+        when(tokenCipher.decrypt("encrypted-token", userId.toString())).thenReturn("access-token");
 
         java.util.concurrent.atomic.AtomicReference<Publication> reservedPublication =
                 new java.util.concurrent.atomic.AtomicReference<>();

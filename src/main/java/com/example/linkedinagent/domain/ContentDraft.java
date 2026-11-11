@@ -26,35 +26,35 @@ public class ContentDraft {
 
     @Id
     @JdbcTypeCode(SqlTypes.VARCHAR)
-    @Column(name = "id", columnDefinition = "TEXT")
+    @Column(name = "id", length = 36)
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "app_user_id", nullable = false)
     private AppUser appUser;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(length = 4000)
     private String text;
 
-    @Column(name = "media_category", columnDefinition = "TEXT")
+    @Column(name = "media_category", length = 64)
     private String mediaCategory;
 
-    @Column(name = "original_url", columnDefinition = "TEXT")
+    @Column(name = "original_url", length = 2000)
     private String originalUrl;
 
-    @Column
+    @Column(length = 255)
     private String title;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 32)
     private String status;
 
-    @Column(name = "approved_at", columnDefinition = "TEXT")
+    @Column(name = "approved_at", length = 64)
     private Instant approvedAt;
 
-    @Column(name = "created_at", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "created_at", nullable = false, length = 64)
     private Instant createdAt;
 
-    @Column(name = "updated_at", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "updated_at", nullable = false, length = 64)
     private Instant updatedAt;
 
     public static ContentDraft createTextDraft(

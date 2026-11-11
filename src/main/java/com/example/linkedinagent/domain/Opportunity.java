@@ -24,41 +24,41 @@ public class Opportunity {
 
     @Id
     @JdbcTypeCode(SqlTypes.VARCHAR)
-    @Column(name = "id", columnDefinition = "TEXT")
+    @Column(name = "id", length = 36)
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "app_user_id", nullable = false)
     private AppUser appUser;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 64)
     private String source;
 
-    @Column(name = "external_url", columnDefinition = "TEXT")
+    @Column(name = "external_url", length = 2000)
     private String externalUrl;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 255)
     private String title;
 
-    @Column(name = "company_name", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "company_name", nullable = false, length = 255)
     private String companyName;
 
-    @Column
+    @Column(length = 255)
     private String location;
 
-    @Column(name = "description_snapshot", columnDefinition = "TEXT")
+    @Column(name = "description_snapshot", length = 4000)
     private String descriptionSnapshot;
 
     @Column(name = "match_score")
     private Integer matchScore;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 32)
     private String status;
 
-    @Column(name = "found_at", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "found_at", nullable = false, length = 64)
     private Instant foundAt;
 
-    @Column(name = "expires_at", columnDefinition = "TEXT")
+    @Column(name = "expires_at", length = 64)
     private Instant expiresAt;
 
     public UUID getId() { return id; }
