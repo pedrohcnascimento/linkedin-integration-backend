@@ -135,6 +135,7 @@ public class LinkedInOAuthResource {
                                             {"code": "LINKEDIN_AUTHORIZATION_FAILED", "message": "OAuth state is missing, expired, or already used."}
                                             """)
                             })),
+            @ApiResponse(responseCode = "401", description = "Sessão local ausente ou expirada (sem corpo).", content = @Content),
             @ApiResponse(responseCode = "429", description = "Limite de callbacks excedido por IP (60/15min) ou state (6/15min).",
                     headers = @Header(name = "Retry-After", description = "Segundos restantes até nova tentativa.", schema = @Schema(type = "string", example = "60")),
                     content = @Content(mediaType = "application/json",
@@ -168,6 +169,7 @@ public class LinkedInOAuthResource {
                             }))
     })
     public ResponseEntity<?> callback(
+            @AuthenticationPrincipal AppUserPrincipal user,
             @Parameter(description = "Código de autorização de uso único enviado pelo LinkedIn em caso de aprovação.")
             @RequestParam(required = false) String code,
             @Parameter(description = "State criptográfico gerado em GET /api/v1/linkedin/oauth/start; expira em 10 minutos e é consumido uma única vez.")
@@ -184,12 +186,12 @@ public class LinkedInOAuthResource {
             rateLimitService.check("oauth-callback", limits);
         }
         if (error != null) {
-            oauthService.rejectAuthorization(state);
+            oauthService.rejectAuthorization(user.getId(), state);
             return ResponseEntity.badRequest()
                     .body(new ApiError("LINKEDIN_AUTHORIZATION_DENIED",
                             "LinkedIn authorization was not completed."));
         }
-        LinkedInConnection connection = oauthService.complete(state, code);
+        LinkedInConnection connection = oauthService.complete(user.getId(), state, code);
         return ResponseEntity.ok(ConnectionResponse.from(connection));
     }
 

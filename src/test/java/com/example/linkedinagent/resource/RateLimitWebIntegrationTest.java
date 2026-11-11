@@ -81,6 +81,7 @@ class RateLimitWebIntegrationTest {
     @Test
     void rateLimitsOAuthCallbackBeforeProcessingProviderParameters() throws Exception {
         mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .with(user(testUser()))
                         .param("state", "test-state")
                         .param("code", "test-code"))
                 .andExpect(status().isTooManyRequests())
@@ -153,12 +154,33 @@ class RateLimitWebIntegrationTest {
         });
 
         mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .with(user(testUser()))
                         .param("state", "test-state")
                         .param("code", "test-code"))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string("Retry-After", "29"))
                 .andExpect(jsonPath("$.code").value("RATE_LIMITED"))
                 .andExpect(jsonPath("$.message").value("Too many requests. Please retry later."));
+    }
+
+    @Test
+    void rateLimitsAuthenticatedGetEndpoints() throws Exception {
+        mockMvc.perform(get("/api/v1/drafts").with(user(testUser())))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "37"))
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+        mockMvc.perform(get("/api/v1/publications").with(user(testUser())))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "37"))
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+        mockMvc.perform(get("/api/v1/users/me").with(user(testUser())))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "37"))
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+        mockMvc.perform(get("/api/v1/linkedin/connection").with(user(testUser())))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "37"))
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
     }
 
     @Test

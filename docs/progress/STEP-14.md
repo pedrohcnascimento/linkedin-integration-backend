@@ -98,6 +98,42 @@ Executar e consolidar o **Passo 14 — Aplicar segurança, LGPD técnica e obser
 - **Remediation:** O limite de `8/15min` em `AuthResource.login` passou a ser debitado apenas em falhas de autenticação (`catch (AuthenticationException)`) e composto por conta + IP (`dimension = "account-ip"`, `normalizedEmail + "|" + clientIp`), impedindo que tentativas falhas de outro IP ou com senha incorreta bloqueiem o login legítimo.
 - **Regression test:** `AuthResourceIntegrationTest.failedLoginsRateLimitOnlyTheOffendingAccountIpAndDoNotLockOutValidCredentials` e `RateLimitWebIntegrationTest.rateLimitsFailedLoginAttemptsByAccountAndIpAfterTheIpBudgetAllowsThem`.
 
+### FINDING-10 — Callback OAuth não vinculado à sessão autenticada iniciadora (`OAUTH-01`)
+- **ID:** `FINDING-10` (`OAUTH-01`)
+- **Severity:** Low to Medium
+- **Status:** `FIXED`
+- **Affected component/route:** `SecurityConfig`, `LinkedInOAuthResource.callback` (`GET /api/v1/linkedin/oauth/callback`), `LinkedInOAuthService`
+- **Evidence:** `/api/v1/linkedin/oauth/callback` era público (`permitAll()`) e identificava o usuário apenas pela linha de `oauth_transaction` correspondente ao `state`. Quem obtivesse um `state` vivo dentro de 10 minutos poderia concluir o OAuth com sua própria conta do LinkedIn na conta local da vítima.
+- **Remediation:** Removido `/api/v1/linkedin/oauth/callback` de `permitAll()` em `SecurityConfig` (exigindo sessão autenticada); `LinkedInOAuthResource.callback` agora injeta `@AuthenticationPrincipal AppUserPrincipal user` e `LinkedInOAuthService.complete` / `rejectAuthorization` verificam que `transaction.getAppUser().getId()` coincide com o usuário da sessão autenticada após consumir atomicamente o `state`.
+- **Regression test:** `AuthResourceIntegrationTest.oauthEndpointsRequireLocalAuthenticationIncludingStateProtectedCallback` e `AuthResourceIntegrationTest.oauthCallbackRejectsStateFromDifferentAuthenticatedSessionAndConsumesState`.
+
+### FINDING-11 — Publicações presas em `PUBLISHING` após falha local pós-envio ou queda de processo (`PUB-05`)
+- **ID:** `FINDING-11` (`PUB-05`)
+- **Severity:** Low to Medium
+- **Status:** `FIXED`
+- **Affected component/route:** `DraftWorkflowService`, `PublicationRepository`, `Publication`
+- **Evidence:** Se `completePublication` falhasse após o LinkedIn já ter aceito o post, a exceção não era convertida para `OUTCOME_UNKNOWN` e o registro permanecia em `PUBLISHING`. Além disso, reservas `PUBLISHING` órfãs por queda de processo nunca expiravam automaticamente para `OUTCOME_UNKNOWN`.
+- **Remediation:** `DraftWorkflowService.publish` agora captura falhas em `completePublication`, grava a publicação como `OUTCOME_UNKNOWN` (`LINKEDIN_RESULT_UNKNOWN`) em transação isolada e lança `LinkedInPublishingException` (`502 LINKEDIN_RESULT_UNKNOWN`); adicionada query `PublicationRepository.markTimedOutPublishingAsOutcomeUnknown` executada automaticamente antes de novas reservas (timeout de 2 minutos) e exposta em `DraftWorkflowService.expireTimedOutPublishingReservations`.
+- **Regression test:** `DraftWorkflowServiceTest.localCompletionFailureAfterLinkedInAcceptsPostTransitionsPublicationToOutcomeUnknown`.
+
+### FINDING-12 — Ausência de limite de corpo HTTP, `page` ilimitado e falta de rate limit nas rotas `GET` (`RESOURCE-01`, `RATE-01`)
+- **ID:** `FINDING-12` (`RESOURCE-01`, `RATE-01`)
+- **Severity:** Low to Medium
+- **Status:** `FIXED`
+- **Affected component/route:** `RequestCorrelationFilter`, `application.yml`, `DraftResource`, `WebConfig`, `RateLimitInterceptor`
+- **Evidence:** Não havia limite explícito de tamanho de payload JSON antes da leitura pelo Jackson, o parâmetro `page` não possuía teto superior (permitindo `OFFSET` profundo) e as rotas `GET` (`/drafts`, `/publications`, `/users/me`, `/linkedin/connection`) não passavam pelo `RateLimitInterceptor`.
+- **Remediation:** `RequestCorrelationFilter` agora impõe limite estrito de `64 KB` (`65_536` bytes) via `Content-Length` e `BoundedHttpServletRequestWrapper`, retornando `413 PAYLOAD_TOO_LARGE` antes que o corpo excedente seja processado; `DraftResource` limita `page` a `0..100` (`MAX_PAGE_INDEX = 100`); `WebConfig` e `RateLimitInterceptor` aplicam política `api-read` (`IP: 240/15min`, `account/session: 120/15min`) em `GET /api/v1/drafts`, `GET /api/v1/publications`, `GET /api/v1/users/me` e `GET /api/v1/linkedin/connection`.
+- **Regression test:** `DraftResourceIntegrationTest.paginationRejectsUnsafePageSize`, `DraftResourceIntegrationTest.reusingIdempotencyKeyAcrossDifferentDraftsReturnsConflictAndOversizedBodyIsRejected` e `RateLimitWebIntegrationTest.rateLimitsAuthenticatedGetEndpoints`.
+
+### FINDING-13 — `Idempotency-Key` não vinculada à operação por usuário e código ambíguo para publicação em andamento (`PUB-03`)
+- **ID:** `FINDING-13` (`PUB-03`)
+- **Severity:** Low to Medium
+- **Status:** `FIXED`
+- **Affected component/route:** `DraftWorkflowService`, `Publication`
+- **Evidence:** O `requestFingerprint` incluía `draftId` e `approvedAt` (`user|draft|approvedAt|key`), de modo que reutilizar a mesma `Idempotency-Key` em outro draft era aceito silenciosamente como nova operação em vez de retornar conflito (`409`). Além disso, uma tentativa concorrente enquanto outra estava em `PUBLISHING` retornava `PUBLICATION_OUTCOME_UNKNOWN`.
+- **Remediation:** O `requestFingerprint` passou a ser derivado de `appUserId + "|" + idempotencyKey.trim()`; se a chave já existir para outro draft do mesmo usuário (`!publication.isSameDraft(draftId)`), `DraftWorkflowService` retorna `409 IDEMPOTENCY_KEY_CONFLICT`; se houver tentativa ativa em `PUBLISHING` para o mesmo draft com outra chave, retorna `409 PUBLICATION_IN_PROGRESS`.
+- **Regression test:** `DraftResourceIntegrationTest.reusingIdempotencyKeyAcrossDifferentDraftsReturnsConflictAndOversizedBodyIsRejected` e `DraftResourceIntegrationTest.manualReconciliationAsNotPublishedKeepsOldKeyBlockedAndAllowsFreshIdempotencyKey`.
+
 ---
 
 ## 2. Matriz de Privacidade e LGPD Técnica (Seção 11 de `planejamento-tecnico.md`)

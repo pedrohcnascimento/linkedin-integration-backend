@@ -63,6 +63,15 @@ public class RateLimitInterceptor implements HandlerInterceptor {
                 || ("POST".equals(request.getMethod()) && path.matches("/api/v1/drafts/[^/]+/approve"));
         if (draftWrite) {
             rateLimitService.check("draft-write", authenticatedWriteLimits(request, 60, 30));
+            return true;
+        }
+        boolean authenticatedRead = "GET".equals(request.getMethod())
+                && (path.equals("/api/v1/drafts")
+                || path.equals("/api/v1/publications")
+                || path.equals("/api/v1/users/me")
+                || path.equals("/api/v1/linkedin/connection"));
+        if (authenticatedRead) {
+            rateLimitService.check("api-read", authenticatedWriteLimits(request, 240, 120));
         }
         return true;
     }

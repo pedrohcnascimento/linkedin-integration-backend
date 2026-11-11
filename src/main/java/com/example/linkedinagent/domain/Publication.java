@@ -83,6 +83,15 @@ public class Publication {
                 : exception.getFailureCode();
     }
 
+    public void markOutcomeUnknown() {
+        this.status = STATUS_OUTCOME_UNKNOWN;
+        this.failureCode = FAILURE_RESULT_UNKNOWN;
+    }
+
+    public boolean isSameDraft(UUID draftId) {
+        return draft != null && draftId != null && draftId.equals(draft.getId());
+    }
+
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
     public AppUser getAppUser() { return appUser; }

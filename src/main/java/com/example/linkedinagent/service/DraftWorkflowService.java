@@ -40,6 +40,7 @@ import java.util.UUID;
 public class DraftWorkflowService {
 
     private static final Logger log = LoggerFactory.getLogger(DraftWorkflowService.class);
+    private static final Duration STUCK_PUBLISHING_TIMEOUT = Duration.ofMinutes(2);
 
     private final ContentDraftRepository draftRepository;
     private final PublicationRepository publicationRepository;
@@ -181,22 +182,50 @@ public class DraftWorkflowService {
             throw exception;
         }
         long latencyMs = Duration.ofNanos(System.nanoTime() - startedNanos).toMillis();
-        Publication completed = Objects.requireNonNull(
-                transactionTemplate.execute(transaction ->
-                        completePublication(appUserId, draftId, attempt.publication().getId(), result, latencyMs)),
-                "Publication completion transaction returned no result.");
-        log.info("LinkedIn publication completed userId={} draftId={} publicationId={} status={} latencyMs={}",
-                appUserId, draftId, completed.getId(), completed.getStatus(), latencyMs);
-        return completed;
+        try {
+            Publication completed = Objects.requireNonNull(
+                    transactionTemplate.execute(transaction ->
+                            completePublication(appUserId, draftId, attempt.publication().getId(), result, latencyMs)),
+                    "Publication completion transaction returned no result.");
+            log.info("LinkedIn publication completed userId={} draftId={} publicationId={} status={} latencyMs={}",
+                    appUserId, draftId, completed.getId(), completed.getStatus(), latencyMs);
+            return completed;
+        } catch (RuntimeException exception) {
+            UUID publicationId = attempt.publication().getId();
+            LinkedInPublishingException unknownOutcome = new LinkedInPublishingException(
+                    Publication.FAILURE_RESULT_UNKNOWN,
+                    "LinkedIn accepted the post, but local completion failed.",
+                    true);
+            transactionTemplate.execute(transaction -> {
+                recordPublicationFailure(appUserId, draftId, publicationId, unknownOutcome, latencyMs);
+                return null;
+            });
+            log.error("Local publication completion failed after LinkedIn accepted post userId={} draftId={} publicationId={}",
+                    appUserId, draftId, publicationId, exception);
+            throw unknownOutcome;
+        }
+    }
+
+    @Transactional
+    public int expireTimedOutPublishingReservations(Duration maxAge) {
+        Instant cutoff = clock.instant().minus(maxAge);
+        return publicationRepository.markTimedOutPublishingAsOutcomeUnknown(cutoff);
     }
 
     private PublishAttempt reservePublication(UUID appUserId, UUID draftId, String idempotencyKey) {
+        Instant now = clock.instant();
+        publicationRepository.markTimedOutPublishingAsOutcomeUnknown(now.minus(STUCK_PUBLISHING_TIMEOUT));
         ContentDraft draft = draftRepository.findLockedByIdAndAppUser_Id(draftId, appUserId)
                 .orElseThrow(() -> error("DRAFT_NOT_FOUND", "Draft was not found.", HttpStatus.NOT_FOUND));
-        String fingerprint = fingerprint(appUserId, draft, idempotencyKey);
+        String fingerprint = fingerprint(appUserId, idempotencyKey);
         var existing = publicationRepository.findByAppUser_IdAndRequestFingerprint(appUserId, fingerprint);
         if (existing.isPresent()) {
             Publication publication = existing.get();
+            if (!publication.isSameDraft(draftId)) {
+                throw error("IDEMPOTENCY_KEY_CONFLICT",
+                        "This Idempotency-Key was already used for a different publication operation.",
+                        HttpStatus.CONFLICT);
+            }
             if (publication.isPublished()) {
                 return new PublishAttempt(publication, null, null, true);
             }
@@ -204,16 +233,19 @@ public class DraftWorkflowService {
                     "This idempotent publication request was already processed.", HttpStatus.CONFLICT);
         }
         if (publicationRepository.existsByAppUser_IdAndDraft_IdAndStatus(
-                appUserId, draftId, Publication.STATUS_OUTCOME_UNKNOWN)
-                || publicationRepository.existsByAppUser_IdAndDraft_IdAndStatus(
-                appUserId, draftId, Publication.STATUS_PUBLISHING)) {
+                appUserId, draftId, Publication.STATUS_OUTCOME_UNKNOWN)) {
             throw error("PUBLICATION_OUTCOME_UNKNOWN",
                     "A previous publication attempt is unresolved; reconcile it before retrying.",
                     HttpStatus.CONFLICT);
         }
+        if (publicationRepository.existsByAppUser_IdAndDraft_IdAndStatus(
+                appUserId, draftId, Publication.STATUS_PUBLISHING)) {
+            throw error("PUBLICATION_IN_PROGRESS",
+                    "A publication attempt for this draft is already in progress; reconcile it if interrupted.",
+                    HttpStatus.CONFLICT);
+        }
         draft.ensureApprovedForPublishing();
 
-        Instant now = clock.instant();
         LinkedInAuthorization authorization = authorizationRepository.findByAppUser_Id(appUserId)
                 .filter(value -> value.isUsableAt(now))
                 .orElseThrow(() -> error("LINKEDIN_CONNECTION_REQUIRED",
@@ -287,9 +319,9 @@ public class DraftWorkflowService {
                 .orElseThrow(() -> error("DRAFT_NOT_FOUND", "Draft was not found.", HttpStatus.NOT_FOUND));
     }
 
-    private String fingerprint(UUID appUserId, ContentDraft draft, String idempotencyKey) {
+    private String fingerprint(UUID appUserId, String idempotencyKey) {
         try {
-            String input = appUserId + "|" + draft.getId() + "|" + draft.getApprovedAt() + "|" + idempotencyKey.trim();
+            String input = appUserId + "|" + idempotencyKey.trim();
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(input.getBytes(StandardCharsets.UTF_8));
             return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);

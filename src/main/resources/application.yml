@@ -21,6 +21,9 @@
 
 server:
   port: 8080
+  tomcat:
+    max-swallow-size: 64KB
+    max-http-form-post-size: 64KB
 
 management:
   endpoints:

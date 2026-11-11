@@ -136,6 +136,63 @@ class DraftWorkflowServiceTest {
         verify(publishingClient, never()).publish(anyString(), any());
     }
 
+    @Test
+    void localCompletionFailureAfterLinkedInAcceptsPostTransitionsPublicationToOutcomeUnknown() {
+        UUID userId = UUID.randomUUID();
+        UUID draftId = UUID.randomUUID();
+        ContentDraftRepository draftRepository = mock(ContentDraftRepository.class);
+        PublicationRepository publicationRepository = mock(PublicationRepository.class);
+        LinkedInAuthorizationRepository authorizationRepository = mock(LinkedInAuthorizationRepository.class);
+        TokenCipher tokenCipher = mock(TokenCipher.class);
+        LinkedInPublishingClient publishingClient = mock(LinkedInPublishingClient.class);
+        PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+        when(transactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
+
+        ContentDraft draft = approvedDraft(draftId);
+        when(draftRepository.findLockedByIdAndAppUser_Id(draftId, userId))
+                .thenReturn(Optional.of(draft))
+                .thenThrow(new IllegalStateException("database write failure during completion"));
+        when(publicationRepository.findByAppUser_IdAndRequestFingerprint(any(), anyString()))
+                .thenReturn(Optional.empty());
+
+        LinkedInAuthorization authorization = new LinkedInAuthorization();
+        authorization.setMemberSubject("member-subject");
+        authorization.setEncryptedAccessToken("encrypted-token");
+        authorization.setStatus(LinkedInAuthorization.STATUS_ACTIVE);
+        authorization.setExpiresAt(NOW.plusSeconds(3600));
+        when(authorizationRepository.findByAppUser_Id(userId)).thenReturn(Optional.of(authorization));
+        when(tokenCipher.decrypt("encrypted-token")).thenReturn("access-token");
+
+        java.util.concurrent.atomic.AtomicReference<Publication> reservedPublication =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        when(publicationRepository.saveAndFlush(any())).thenAnswer(invocation -> {
+            Publication saved = invocation.getArgument(0);
+            reservedPublication.set(saved);
+            return saved;
+        });
+        when(publicationRepository.findById(any())).thenAnswer(invocation -> Optional.ofNullable(reservedPublication.get()));
+        when(publishingClient.publish(anyString(), any()))
+                .thenReturn(new com.example.linkedinagent.domain.PublicationResult("urn:li:share:accepted-1"));
+
+        DraftWorkflowService service = new DraftWorkflowService(
+                draftRepository,
+                publicationRepository,
+                authorizationRepository,
+                tokenCipher,
+                publishingClient,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                transactionManager);
+
+        assertThatThrownBy(() -> service.publish(userId, draftId, "completion-failure-key"))
+                .isInstanceOfSatisfying(com.example.linkedinagent.exception.LinkedInPublishingException.class, exception -> {
+                    assertThat(exception.isOutcomeUnknown()).isTrue();
+                    assertThat(exception.getFailureCode()).isEqualTo(Publication.FAILURE_RESULT_UNKNOWN);
+                });
+        assertThat(reservedPublication.get()).isNotNull();
+        assertThat(reservedPublication.get().getStatus()).isEqualTo(Publication.STATUS_OUTCOME_UNKNOWN);
+        assertThat(reservedPublication.get().getFailureCode()).isEqualTo(Publication.FAILURE_RESULT_UNKNOWN);
+    }
+
     private ContentDraft approvedDraft(UUID draftId) {
         ContentDraft draft = new ContentDraft();
         draft.setId(draftId);

@@ -343,13 +343,21 @@ class AuthResourceIntegrationTest {
     }
 
     @Test
-    void oauthEndpointsRequireLocalAuthenticationExceptStateProtectedCallback() throws Exception {
+    void oauthEndpointsRequireLocalAuthenticationIncludingStateProtectedCallback() throws Exception {
         mockMvc.perform(get("/api/v1/linkedin/oauth/start"))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/v1/linkedin/connection"))
                 .andExpect(status().isUnauthorized());
-
         mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .param("state", "unknown-state")
+                        .param("code", "authorization-code"))
+                .andExpect(status().isUnauthorized());
+
+        String email = UUID.randomUUID() + "@example.com";
+        register(email);
+        MockHttpSession session = login(email);
+        mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .session(session)
                         .param("state", "unknown-state")
                         .param("code", "authorization-code"))
                 .andExpect(status().isBadRequest())
@@ -358,11 +366,16 @@ class AuthResourceIntegrationTest {
 
     @Test
     void oauthCallbackRejectsMissingStateOrAuthorizationCode() throws Exception {
-        mockMvc.perform(get("/api/v1/linkedin/oauth/callback"))
+        String email = UUID.randomUUID() + "@example.com";
+        register(email);
+        MockHttpSession session = login(email);
+
+        mockMvc.perform(get("/api/v1/linkedin/oauth/callback").session(session))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("LINKEDIN_AUTHORIZATION_FAILED"));
 
         mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .session(session)
                         .param("state", "state-without-code"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("LINKEDIN_AUTHORIZATION_FAILED"));
@@ -413,6 +426,7 @@ class AuthResourceIntegrationTest {
                 .thenReturn(new LinkedInOAuthClient.LinkedInMember("linkedin-subject"));
 
         mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .session(session)
                         .param("state", state)
                         .param("code", "authorization-code"))
                 .andExpect(status().isOk())
@@ -423,10 +437,46 @@ class AuthResourceIntegrationTest {
                 .andExpect(jsonPath("$.state").doesNotExist());
 
         mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .session(session)
                         .param("state", state)
                         .param("code", "authorization-code"))
                 .andExpect(status().isBadRequest());
         verify(linkedInOAuthClient).exchangeAuthorizationCode("authorization-code");
+    }
+
+    @Test
+    void oauthCallbackRejectsStateFromDifferentAuthenticatedSessionAndConsumesState() throws Exception {
+        String victimEmail = UUID.randomUUID() + "@example.com";
+        String attackerEmail = UUID.randomUUID() + "@example.com";
+        register(victimEmail);
+        register(attackerEmail);
+        MockHttpSession victimSession = login(victimEmail);
+        MockHttpSession attackerSession = login(attackerEmail);
+        when(linkedInOAuthClient.authorizationUri(anyString(), anyString()))
+                .thenAnswer(invocation -> URI.create(
+                        "https://www.linkedin.com/oauth/v2/authorization?state=" + invocation.getArgument(0)));
+
+        MvcResult start = mockMvc.perform(get("/api/v1/linkedin/oauth/start").session(victimSession))
+                .andExpect(status().isFound())
+                .andReturn();
+        String state = UriComponentsBuilder.fromUriString(start.getResponse().getHeader("Location"))
+                .build()
+                .getQueryParams()
+                .getFirst("state");
+
+        mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .session(attackerSession)
+                        .param("state", state)
+                        .param("code", "authorization-code"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("LINKEDIN_AUTHORIZATION_FAILED"));
+
+        mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .session(victimSession)
+                        .param("state", state)
+                        .param("code", "authorization-code"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("LINKEDIN_AUTHORIZATION_FAILED"));
     }
 
     @Test
@@ -447,6 +497,7 @@ class AuthResourceIntegrationTest {
                 .getFirst("state");
 
         mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .session(session)
                         .param("state", state)
                         .param("error", "user_cancelled_authorize")
                         .param("error_description", "provider-specific private description"))
@@ -456,6 +507,7 @@ class AuthResourceIntegrationTest {
                         Matchers.containsString("private description"))));
 
         mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .session(session)
                         .param("state", state)
                         .param("code", "authorization-code"))
                 .andExpect(status().isBadRequest());
@@ -481,6 +533,7 @@ class AuthResourceIntegrationTest {
                 .thenThrow(new LinkedInProviderException("provider private details"));
 
         mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .session(session)
                         .param("state", state)
                         .param("code", "authorization-code"))
                 .andExpect(status().isBadGateway())
@@ -490,6 +543,7 @@ class AuthResourceIntegrationTest {
                         Matchers.containsString("provider private details"))));
 
         mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .session(session)
                         .param("state", state)
                         .param("code", "authorization-code"))
                 .andExpect(status().isBadRequest())
@@ -522,12 +576,14 @@ class AuthResourceIntegrationTest {
                 .thenThrow(new LinkedInProviderException("provider private details"));
 
         mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .session(session)
                         .param("state", state)
                         .param("code", "authorization-code"))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.code").value("LINKEDIN_PROVIDER_ERROR"));
 
         mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .session(session)
                         .param("state", state)
                         .param("code", "authorization-code"))
                 .andExpect(status().isBadRequest())
@@ -561,6 +617,7 @@ class AuthResourceIntegrationTest {
         when(linkedInOAuthClient.userInfo("raw-access-token"))
                 .thenReturn(new LinkedInOAuthClient.LinkedInMember("first-member"));
         mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .session(firstSession)
                         .param("state", state)
                         .param("code", "authorization-code"))
                 .andExpect(status().isOk());
@@ -590,6 +647,7 @@ class AuthResourceIntegrationTest {
                         .delete("/api/v1/linkedin/connection").session(firstSession).with(csrf()))
                 .andExpect(status().isNoContent());
         mockMvc.perform(get("/api/v1/linkedin/oauth/callback")
+                        .session(firstSession)
                         .param("state", pendingState)
                         .param("code", "authorization-code"))
                 .andExpect(status().isBadRequest());

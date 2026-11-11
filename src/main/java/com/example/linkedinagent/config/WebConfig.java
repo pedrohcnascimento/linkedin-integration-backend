@@ -93,6 +93,8 @@ public class WebConfig implements WebMvcConfigurer {
                         "/api/v1/auth/csrf",
                         "/api/v1/auth/login",
                         "/api/v1/auth/register",
+                        "/api/v1/users/me",
+                        "/api/v1/linkedin/connection",
                         "/api/v1/linkedin/oauth/start",
                         "/api/v1/linkedin/oauth/callback",
                         "/api/v1/drafts",

@@ -45,6 +45,8 @@ import java.util.UUID;
 @Tag(name = "Drafts", description = "Criação, listagem paginada, edição, aprovação e publicação de drafts textuais.")
 public class DraftResource {
 
+    public static final int MAX_PAGE_INDEX = 100;
+
     private final DraftWorkflowService workflowService;
 
     public DraftResource(DraftWorkflowService workflowService) {
@@ -144,13 +146,13 @@ public class DraftResource {
     })
     public DraftPageResponse list(
             @AuthenticationPrincipal AppUserPrincipal user,
-            @Parameter(description = "Índice da página (base 0).", schema = @Schema(type = "integer", minimum = "0", defaultValue = "0"))
+            @Parameter(description = "Índice da página (base 0, máximo 100).", schema = @Schema(type = "integer", minimum = "0", maximum = "100", defaultValue = "0"))
             @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Quantidade de itens por página (1 a 50).", schema = @Schema(type = "integer", minimum = "1", maximum = "50", defaultValue = "20"))
             @RequestParam(defaultValue = "20") int size) {
-        if (page < 0 || size < 1 || size > 50) {
+        if (page < 0 || page > MAX_PAGE_INDEX || size < 1 || size > 50) {
             throw new DraftWorkflowException("INVALID_PAGINATION",
-                    "Page must be non-negative and size must be between 1 and 50.", HttpStatus.BAD_REQUEST);
+                    "Page must be between 0 and 100 and size must be between 1 and 50.", HttpStatus.BAD_REQUEST);
         }
         Page<ContentDraft> drafts = workflowService.list(user.getId(),
                 PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt")));
@@ -454,13 +456,13 @@ public class DraftResource {
     })
     public PublicationPageResponse listPublications(
             @AuthenticationPrincipal AppUserPrincipal user,
-            @Parameter(description = "Índice da página (base 0).", schema = @Schema(type = "integer", minimum = "0", defaultValue = "0"))
+            @Parameter(description = "Índice da página (base 0, máximo 100).", schema = @Schema(type = "integer", minimum = "0", maximum = "100", defaultValue = "0"))
             @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Quantidade de itens por página (1 a 50).", schema = @Schema(type = "integer", minimum = "1", maximum = "50", defaultValue = "20"))
             @RequestParam(defaultValue = "20") int size) {
-        if (page < 0 || size < 1 || size > 50) {
+        if (page < 0 || page > MAX_PAGE_INDEX || size < 1 || size > 50) {
             throw new DraftWorkflowException("INVALID_PAGINATION",
-                    "Page must be non-negative and size must be between 1 and 50.", HttpStatus.BAD_REQUEST);
+                    "Page must be between 0 and 100 and size must be between 1 and 50.", HttpStatus.BAD_REQUEST);
         }
         Page<Publication> publications = workflowService.listPublications(user.getId(),
                 PageRequest.of(page, size, Sort.by(

@@ -102,6 +102,10 @@ public class LinkedInOAuthService {
     }
 
     public LinkedInConnection complete(String state, String authorizationCode) {
+        return complete(null, state, authorizationCode);
+    }
+
+    public LinkedInConnection complete(UUID expectedUserId, String state, String authorizationCode) {
         if (state == null || state.isBlank()) {
             throw new LinkedInOAuthException("OAuth state is missing or invalid.");
         }
@@ -110,7 +114,7 @@ public class LinkedInOAuthService {
         }
 
         Instant now = clock.instant();
-        OAuthTransaction transaction = consumeValidTransaction(state, now);
+        OAuthTransaction transaction = consumeValidTransaction(expectedUserId, state, now);
         long startedNanos = System.nanoTime();
 
         LinkedInOAuthClient.AccessToken accessToken =
@@ -166,10 +170,14 @@ public class LinkedInOAuthService {
     }
 
     public void rejectAuthorization(String state) {
+        rejectAuthorization(null, state);
+    }
+
+    public void rejectAuthorization(UUID expectedUserId, String state) {
         if (state == null || state.isBlank()) {
             throw new LinkedInOAuthException("OAuth state is missing or invalid.");
         }
-        OAuthTransaction transaction = consumeValidTransaction(state, clock.instant());
+        OAuthTransaction transaction = consumeValidTransaction(expectedUserId, state, clock.instant());
         UUID appUserId = transaction.getAppUser().getId();
         if (auditService != null) {
             auditService.recordForUser(
@@ -213,7 +221,7 @@ public class LinkedInOAuthService {
                 appUserId, existing.isPresent());
     }
 
-    private OAuthTransaction consumeValidTransaction(String state, Instant now) {
+    private OAuthTransaction consumeValidTransaction(UUID expectedUserId, String state, Instant now) {
         String stateHash = hashState(state);
         if (transactionRepository.markConsumedIfUnused(stateHash, now) != 1) {
             throw new LinkedInOAuthException("OAuth state is missing, expired, or already used.");
@@ -221,6 +229,9 @@ public class LinkedInOAuthService {
         OAuthTransaction transaction = transactionRepository.findByStateHash(stateHash)
                 .orElseThrow(() -> new IllegalStateException("Consumed OAuth transaction could not be loaded."));
         if (!transaction.isUnexpiredAt(now)) {
+            throw new LinkedInOAuthException("OAuth state is missing, expired, or already used.");
+        }
+        if (expectedUserId != null && !expectedUserId.equals(transaction.getAppUser().getId())) {
             throw new LinkedInOAuthException("OAuth state is missing, expired, or already used.");
         }
         return transaction;

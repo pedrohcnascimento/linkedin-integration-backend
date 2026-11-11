@@ -207,6 +207,39 @@ class DraftResourceIntegrationTest {
         mockMvc.perform(get("/api/v1/drafts").session(session).param("size", "51"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_PAGINATION"));
+        mockMvc.perform(get("/api/v1/drafts").session(session).param("page", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PAGINATION"));
+    }
+
+    @Test
+    void reusingIdempotencyKeyAcrossDifferentDraftsReturnsConflictAndOversizedBodyIsRejected() throws Exception {
+        MockHttpSession session = loginAndRegister();
+        UUID firstDraftId = createDraft(session);
+        UUID secondDraftId = createDraft(session);
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", firstDraftId).session(session).with(csrf()))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", secondDraftId).session(session).with(csrf()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", firstDraftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "shared-idempotency-key"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("PUBLISHED"));
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", secondDraftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "shared-idempotency-key"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_CONFLICT"));
+
+        String oversizedJson = "{\"text\":\"" + "x".repeat(70_000) + "\",\"mediaCategory\":\"NONE\"}";
+        mockMvc.perform(post("/api/v1/drafts")
+                        .session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(oversizedJson))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.code").value("PAYLOAD_TOO_LARGE"));
     }
 
     @Test
@@ -406,7 +439,7 @@ class DraftResourceIntegrationTest {
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
                         .session(session).with(csrf()).header("Idempotency-Key", "premature-new-key"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("PUBLICATION_OUTCOME_UNKNOWN"));
+                .andExpect(jsonPath("$.code").value("PUBLICATION_IN_PROGRESS"));
 
         var row = jdbcTemplate.queryForMap(
                 "SELECT id, app_user_id FROM publication WHERE draft_id = ? AND status = 'PUBLISHING'",
