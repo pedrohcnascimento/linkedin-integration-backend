@@ -5,6 +5,8 @@ import com.example.linkedinagent.exception.RateLimitExceededException;
 import com.example.linkedinagent.exception.RateLimitStoreUnavailableException;
 import com.example.linkedinagent.repository.RateLimitStore;
 import com.example.linkedinagent.security.AesGcmTokenCipher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,6 +28,7 @@ import java.util.List;
 @Service
 public class RateLimitService {
 
+    private static final Logger log = LoggerFactory.getLogger(RateLimitService.class);
     private static final String HMAC_ALGORITHM = "HmacSHA256";
     private final byte[] hmacKey;
     private final RateLimitStore store;
@@ -64,6 +67,34 @@ public class RateLimitService {
     }
 
     public void check(String scope, List<Limit> limits) {
+        List<RateLimitBucket> buckets = toBuckets(scope, limits);
+        try {
+            store.acquire(buckets).ifPresent(retryAfter -> {
+                throw new RateLimitExceededException(retryAfter);
+            });
+        } catch (DataAccessException exception) {
+            throw new RateLimitStoreUnavailableException();
+        }
+    }
+
+    public void verifyNotExceeded(String scope, List<Limit> limits) {
+        List<RateLimitBucket> buckets = toBuckets(scope, limits);
+        try {
+            store.peek(buckets).ifPresent(retryAfter -> {
+                buckets.stream()
+                        .filter(bucket -> "account".equals(bucket.dimension()))
+                        .findFirst()
+                        .ifPresent(bucket -> log.warn(
+                                "Security alert: distributed failure ceiling reached for scope={} accountHash={}",
+                                scope, bucket.subjectHash()));
+                throw new RateLimitExceededException(retryAfter);
+            });
+        } catch (DataAccessException exception) {
+            throw new RateLimitStoreUnavailableException();
+        }
+    }
+
+    private List<RateLimitBucket> toBuckets(String scope, List<Limit> limits) {
         List<RateLimitBucket> buckets = new ArrayList<>(limits.size());
         for (Limit limit : limits) {
             if (limit.identity() == null || limit.identity().isBlank()) {
@@ -79,14 +110,7 @@ public class RateLimitService {
         if (buckets.isEmpty()) {
             throw new IllegalArgumentException("At least one rate limit identity is required.");
         }
-
-        try {
-            store.acquire(List.copyOf(buckets)).ifPresent(retryAfter -> {
-                throw new RateLimitExceededException(retryAfter);
-            });
-        } catch (DataAccessException exception) {
-            throw new RateLimitStoreUnavailableException();
-        }
+        return List.copyOf(buckets);
     }
 
     private String hash(String dimension, String identity) {

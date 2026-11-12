@@ -1,8 +1,10 @@
 package com.example.linkedinagent.resource;
 
 import com.example.linkedinagent.client.LinkedInOAuthClient;
+import com.example.linkedinagent.config.SecurityConfig;
 import com.example.linkedinagent.domain.RateLimitBucket;
 import com.example.linkedinagent.exception.LinkedInProviderException;
+import com.example.linkedinagent.repository.InMemoryRateLimitStore;
 import com.example.linkedinagent.repository.RateLimitStore;
 import com.jayway.jsonpath.JsonPath;
 import jakarta.servlet.http.Cookie;
@@ -68,6 +70,7 @@ class AuthResourceIntegrationTest {
     @BeforeEach
     void allowRequestsInExistingAuthenticationScenarios() {
         when(rateLimitStore.acquire(anyList())).thenReturn(Optional.empty());
+        when(rateLimitStore.peek(anyList())).thenReturn(Optional.empty());
         securityFilterChain.getFilters().stream()
                 .filter(CsrfFilter.class::isInstance)
                 .map(CsrfFilter.class::cast)
@@ -266,20 +269,13 @@ class AuthResourceIntegrationTest {
     }
 
     @Test
-    void failedLoginsRateLimitOnlyTheOffendingAccountIpAndDoNotLockOutValidCredentials() throws Exception {
+    void failedLoginsRateLimitBeforePasswordVerificationForOffendingIpWhileAllowingOtherIps() throws Exception {
         String email = UUID.randomUUID() + "@example.com";
         register(email);
 
-        java.util.concurrent.atomic.AtomicInteger accountIpFailures = new java.util.concurrent.atomic.AtomicInteger();
-        when(rateLimitStore.acquire(anyList())).thenAnswer(invocation -> {
-            java.util.List<RateLimitBucket> buckets = invocation.getArgument(0);
-            boolean isAccountIpCheck = buckets.stream()
-                    .anyMatch(bucket -> bucket.dimension().equals("account-ip"));
-            if (isAccountIpCheck && accountIpFailures.incrementAndGet() > 8) {
-                return Optional.of( java.time.Duration.ofSeconds(45));
-            }
-            return Optional.empty();
-        });
+        InMemoryRateLimitStore realStore = new InMemoryRateLimitStore(java.time.Clock.systemUTC());
+        when(rateLimitStore.acquire(anyList())).thenAnswer(invocation -> realStore.acquire(invocation.getArgument(0)));
+        when(rateLimitStore.peek(anyList())).thenAnswer(invocation -> realStore.peek(invocation.getArgument(0)));
 
         for (int attempt = 0; attempt < 8; attempt++) {
             mockMvc.perform(post("/api/v1/auth/login")
@@ -296,6 +292,7 @@ class AuthResourceIntegrationTest {
                     .andExpect(jsonPath("$.code").value("AUTHENTICATION_FAILED"));
         }
 
+        // 9th attempt from the same offending IP is blocked BEFORE password verification, even with the valid password.
         mockMvc.perform(post("/api/v1/auth/login")
                         .with(csrf())
                         .with(request -> {
@@ -304,15 +301,16 @@ class AuthResourceIntegrationTest {
                         })
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"email":"%s","password":"wrong-password-123"}
-                                """.formatted(email)))
+                                {"email":"%s","password":"%s"}
+                                """.formatted(email, PASSWORD)))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
 
+        // Legitimate user from a different IP can still authenticate with the valid password.
         mockMvc.perform(post("/api/v1/auth/login")
                         .with(csrf())
                         .with(request -> {
-                            request.setRemoteAddr("198.51.100.77");
+                            request.setRemoteAddr("203.0.113.5");
                             return request;
                         })
                         .contentType(MediaType.APPLICATION_JSON)
@@ -459,7 +457,7 @@ class AuthResourceIntegrationTest {
     }
 
     @Test
-    void oauthCallbackRejectsStateFromDifferentAuthenticatedSessionAndConsumesState() throws Exception {
+    void oauthCallbackRejectsStateFromDifferentAuthenticatedSessionWithoutBurningVictimState() throws Exception {
         String victimEmail = UUID.randomUUID() + "@example.com";
         String attackerEmail = UUID.randomUUID() + "@example.com";
         register(victimEmail);
@@ -469,6 +467,11 @@ class AuthResourceIntegrationTest {
         when(linkedInOAuthClient.authorizationUri(anyString(), anyString()))
                 .thenAnswer(invocation -> URI.create(
                         "https://www.linkedin.com/oauth/v2/authorization?state=" + invocation.getArgument(0)));
+        when(linkedInOAuthClient.exchangeAuthorizationCode("authorization-code"))
+                .thenReturn(new LinkedInOAuthClient.AccessToken(
+                        "raw-access-token", 3600, Optional.empty(), Optional.empty()));
+        when(linkedInOAuthClient.userInfo("raw-access-token"))
+                .thenReturn(new LinkedInOAuthClient.LinkedInMember("victim-member"));
 
         MvcResult start = mockMvc.perform(get("/api/v1/linkedin/oauth/start").session(victimSession))
                 .andExpect(status().isFound())
@@ -489,8 +492,9 @@ class AuthResourceIntegrationTest {
                         .session(victimSession)
                         .param("state", state)
                         .param("code", "authorization-code"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("LINKEDIN_AUTHORIZATION_FAILED"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.connected").value(true))
+                .andExpect(jsonPath("$.memberSubject").value("victim-member"));
     }
 
     @Test
@@ -669,10 +673,37 @@ class AuthResourceIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.connected").value(false));
 
+        MockHttpSession concurrentFirstUserSession = login(firstEmail);
+        MockHttpSession expiredLifetimeSession = login(firstEmail);
+        expiredLifetimeSession.setAttribute(
+                SecurityConfig.AbsoluteSessionTimeoutFilter.SESSION_CREATED_AT_ATTR,
+                java.time.Instant.now().minus(java.time.Duration.ofHours(8).plusMinutes(1)).toEpochMilli());
+        mockMvc.perform(get("/api/v1/users/me").session(expiredLifetimeSession))
+                .andExpect(status().isUnauthorized());
+
         mockMvc.perform(MockMvcRequestBuilders
-                        .delete("/api/v1/users/me").session(firstSession).with(csrf()))
+                        .delete("/api/v1/users/me")
+                        .session(firstSession)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"password":"wrong-password-123"}
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_FAILED"));
+
+        mockMvc.perform(MockMvcRequestBuilders
+                        .delete("/api/v1/users/me")
+                        .session(firstSession)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"password":"%s"}
+                                """.formatted(PASSWORD)))
                 .andExpect(status().isNoContent());
         mockMvc.perform(get("/api/v1/users/me").session(firstSession))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/users/me").session(concurrentFirstUserSession))
                 .andExpect(status().isUnauthorized());
     }
 

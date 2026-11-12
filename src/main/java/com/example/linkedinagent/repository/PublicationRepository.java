@@ -29,5 +29,18 @@ public interface PublicationRepository extends JpaRepository<Publication, UUID> 
             """)
     int markTimedOutPublishingAsOutcomeUnknown(@Param("cutoff") Instant cutoff);
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update Publication publication
+            set publication.status = 'OUTCOME_UNKNOWN',
+                publication.failureCode = 'LINKEDIN_RESULT_UNKNOWN'
+            where publication.appUser.id = :appUserId
+             and publication.status = 'PUBLISHING'
+             and publication.createdAt <= :cutoff
+            """)
+    int markTimedOutPublishingForUserAsOutcomeUnknown(
+            @Param("appUserId") UUID appUserId,
+            @Param("cutoff") Instant cutoff);
+
     Page<Publication> findAllByAppUser_Id(UUID appUserId, Pageable pageable);
 }
