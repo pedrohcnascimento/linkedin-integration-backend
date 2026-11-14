@@ -29,18 +29,18 @@ jobs:
       - name: Run unit and integration test suite
         run: mvn -B verify
 
-      - name: Run OWASP Dependency-Check
+      - name: Run OWASP Dependency-Check (when NVD_API_KEY is configured)
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
-          EXTRA_ARGS=()
-          if [ -n "${NVD_API_KEY:-}" ]; then
-            EXTRA_ARGS+=("-DnvdApiKey=${NVD_API_KEY}")
+          if [ -z "${NVD_API_KEY:-}" ]; then
+            echo "Skipping OWASP Dependency-Check: NVD_API_KEY secret is not configured."
+            exit 0
           fi
           mvn -B org.owasp:dependency-check-maven:12.1.0:check \
+            -DnvdApiKey="${NVD_API_KEY}" \
             -DfailBuildOnCVSS=7 \
-            -Dformats=HTML,JSON \
-            "${EXTRA_ARGS[@]}"
+            -Dformats=HTML,JSON
 
   gitleaks:
     name: Gitleaks Secret Scan
@@ -74,13 +74,13 @@ jobs:
           cache: maven
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@45775bd8235c68ba998cffa51713cbe4d58ce0c3 # v3.28.11
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v3.28.11
         with:
           languages: java-kotlin
           queries: security-extended
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@45775bd8235c68ba998cffa51713cbe4d58ce0c3 # v3.28.11
+        uses: github/codeql-action/autobuild@33d7b85da1a04171e211befe2c739303b9a4c066 # v3.28.11
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@45775bd8235c68ba998cffa51713cbe4d58ce0c3 # v3.28.11
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v3.28.11
