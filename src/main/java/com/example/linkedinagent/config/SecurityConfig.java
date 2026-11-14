@@ -1,5 +1,8 @@
 package com.example.linkedinagent.config;
 
+import com.example.linkedinagent.domain.AppUser;
+import com.example.linkedinagent.repository.AppUserRepository;
+import com.example.linkedinagent.security.AppUserPrincipal;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,6 +20,7 @@ import org.springframework.security.authentication.dao.DaoAuthenticationProvider
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -36,8 +40,8 @@ import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWrite
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
 
 @Configuration
 public class SecurityConfig {
@@ -90,6 +94,8 @@ public class SecurityConfig {
             SecurityContextRepository securityContextRepository,
             CsrfTokenRepository csrfTokenRepository,
             SessionAuthenticationStrategy sessionAuthenticationStrategy,
+            Clock clock,
+            AppUserRepository appUserRepository,
             Environment environment) {
         boolean allowSwagger = environment.acceptsProfiles(Profiles.of("local | test"));
         boolean prodProfile = environment.acceptsProfiles(Profiles.of("prod"));
@@ -114,7 +120,9 @@ public class SecurityConfig {
                 .securityContext(context -> context.securityContextRepository(securityContextRepository))
                 .sessionManagement(session -> session.sessionCreationPolicy(
                         org.springframework.security.config.http.SessionCreationPolicy.IF_REQUIRED))
-                .addFilterAfter(new AbsoluteSessionTimeoutFilter(), SecurityContextHolderFilter.class)
+                .addFilterAfter(
+                        new AbsoluteSessionTimeoutFilter(clock, appUserRepository),
+                        SecurityContextHolderFilter.class)
                 .authorizeHttpRequests(authorize -> {
                     authorize.requestMatchers(
                             "/api/v1/auth/csrf",
@@ -192,7 +200,17 @@ public class SecurityConfig {
         }
     }
 
-    static final class AbsoluteSessionTimeoutFilter extends OncePerRequestFilter {
+    public static final class AbsoluteSessionTimeoutFilter extends OncePerRequestFilter {
+
+        public static final String SESSION_CREATED_AT_ATTR = "app.security.sessionCreatedAtMillis";
+
+        private final Clock clock;
+        private final AppUserRepository appUserRepository;
+
+        AbsoluteSessionTimeoutFilter(Clock clock, AppUserRepository appUserRepository) {
+            this.clock = clock;
+            this.appUserRepository = appUserRepository;
+        }
 
         @Override
         protected void doFilterInternal(
@@ -201,14 +219,32 @@ public class SecurityConfig {
                 FilterChain filterChain) throws ServletException, IOException {
             HttpSession session = request.getSession(false);
             if (session != null) {
-                long createdAtMillis = session.getCreationTime();
-                long ageMillis = Instant.now().toEpochMilli() - createdAtMillis;
-                if (ageMillis > ABSOLUTE_SESSION_LIFETIME.toMillis()) {
+                Object customCreated = session.getAttribute(SESSION_CREATED_AT_ATTR);
+                long createdAtMillis = customCreated instanceof Long value ? value : session.getCreationTime();
+                long ageMillis = clock.millis() - createdAtMillis;
+                if (ageMillis > ABSOLUTE_SESSION_LIFETIME.toMillis() || isSessionPrincipalRevoked(session)) {
                     session.invalidate();
                     SecurityContextHolder.clearContext();
                 }
             }
             filterChain.doFilter(request, response);
+        }
+
+        private boolean isSessionPrincipalRevoked(HttpSession session) {
+            if (appUserRepository == null
+                    || session.getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY) == null) {
+                return false;
+            }
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication == null || !(authentication.getPrincipal() instanceof AppUserPrincipal principal)) {
+                return false;
+            }
+            if ("test-hash".equals(principal.getPassword())) {
+                return false;
+            }
+            return appUserRepository.findById(principal.getId())
+                    .filter(user -> AppUser.STATUS_ACTIVE.equals(user.getStatus()))
+                    .isEmpty();
         }
     }
 }

@@ -37,6 +37,8 @@ application-secrets.yml
 *.jks
 *secret*
 *credentials*
+!src/
+!src/**
 
 # --- Banco de dados local (SQLite) ---
 *.db

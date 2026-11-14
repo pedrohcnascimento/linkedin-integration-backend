@@ -157,6 +157,9 @@ public class DraftWorkflowService {
         if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 200) {
             throw error("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key is required.", HttpStatus.BAD_REQUEST);
         }
+        Instant cutoff = clock.instant().minus(STUCK_PUBLISHING_TIMEOUT);
+        transactionTemplate.executeWithoutResult(transaction ->
+                publicationRepository.markTimedOutPublishingForUserAsOutcomeUnknown(appUserId, cutoff));
         PublishAttempt attempt = Objects.requireNonNull(
                 transactionTemplate.execute(transaction -> reservePublication(appUserId, draftId, idempotencyKey)),
                 "Publication reservation transaction returned no result.");
@@ -214,7 +217,6 @@ public class DraftWorkflowService {
 
     private PublishAttempt reservePublication(UUID appUserId, UUID draftId, String idempotencyKey) {
         Instant now = clock.instant();
-        publicationRepository.markTimedOutPublishingAsOutcomeUnknown(now.minus(STUCK_PUBLISHING_TIMEOUT));
         ContentDraft draft = draftRepository.findLockedByIdAndAppUser_Id(draftId, appUserId)
                 .orElseThrow(() -> error("DRAFT_NOT_FOUND", "Draft was not found.", HttpStatus.NOT_FOUND));
         String fingerprint = fingerprint(appUserId, idempotencyKey);

@@ -5,6 +5,7 @@ import com.example.linkedinagent.config.WebConfig;
 import com.example.linkedinagent.domain.AppUser;
 import com.example.linkedinagent.dto.ApiError;
 import com.example.linkedinagent.dto.AuthDtos.CsrfResponse;
+import com.example.linkedinagent.dto.AuthDtos.DeleteAccountRequest;
 import com.example.linkedinagent.dto.AuthDtos.LoginRequest;
 import com.example.linkedinagent.dto.AuthDtos.RegisterRequest;
 import com.example.linkedinagent.dto.AuthDtos.UserResponse;
@@ -214,14 +215,18 @@ public class AuthResource {
             HttpServletRequest httpRequest,
             HttpServletResponse httpResponse) {
         String normalizedEmail = request.email().trim().toLowerCase(Locale.ROOT);
+        String clientIp = RateLimitInterceptor.resolveClientAddress(httpRequest, trustedProxyIps);
+        List<RateLimitService.Limit> failureLimits = List.of(
+                new RateLimitService.Limit("account-ip", normalizedEmail + "|" + clientIp, 8, Duration.ofMinutes(15)),
+                new RateLimitService.Limit("account", normalizedEmail, 100, Duration.ofHours(1)));
+        rateLimitService.verifyNotExceeded("auth-login", failureLimits);
+
         Authentication authentication;
         try {
             authentication = authenticationManager.authenticate(
                     UsernamePasswordAuthenticationToken.unauthenticated(request.email(), request.password()));
         } catch (AuthenticationException exception) {
-            String clientIp = RateLimitInterceptor.resolveClientAddress(httpRequest, trustedProxyIps);
-            rateLimitService.check("auth-login", List.of(new RateLimitService.Limit(
-                    "account-ip", normalizedEmail + "|" + clientIp, 8, Duration.ofMinutes(15))));
+            rateLimitService.check("auth-login", failureLimits);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new ApiError("AUTHENTICATION_FAILED", "Email or password is incorrect."));
         }
@@ -253,16 +258,34 @@ public class AuthResource {
     }
 
     @DeleteMapping("/users/me")
-    @Operation(summary = "Excluir conta local e dados associados (LGPD)", description = "Remove a conta local autenticada, tokens cifrados do LinkedIn, transações OAuth, rascunhos e histórico de publicação, anonimizando a trilha de auditoria e invalidando a sessão HTTP.")
+    @Operation(summary = "Excluir conta local e dados associados (LGPD)", description = "Exige confirmação da senha atual e remove a conta local autenticada, tokens cifrados do LinkedIn, transações OAuth, rascunhos e histórico de publicação, anonimizando a trilha de auditoria e invalidando a sessão HTTP.")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Conta local e dados associados removidos (sem corpo).", content = @Content),
-            @ApiResponse(responseCode = "401", description = "Sessão local ausente ou expirada (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "400", description = "Corpo JSON malformado ou senha ausente.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "401", description = "Sessão ausente/expirada ou senha de confirmação incorreta.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class))),
             @ApiResponse(responseCode = "403", description = "Token CSRF ausente ou inválido (sem corpo).", content = @Content)
     })
-    public ResponseEntity<Void> deleteCurrentUser(
+    public ResponseEntity<?> deleteCurrentUser(
             @AuthenticationPrincipal AppUserPrincipal user,
+            @Valid @RequestBody DeleteAccountRequest deleteRequest,
             HttpServletRequest request,
             HttpServletResponse response) {
+        String clientIp = RateLimitInterceptor.resolveClientAddress(request, trustedProxyIps);
+        List<RateLimitService.Limit> failureLimits = List.of(
+                new RateLimitService.Limit("account-ip", user.getEmail() + "|" + clientIp, 8, Duration.ofMinutes(15)));
+        rateLimitService.verifyNotExceeded("auth-delete", failureLimits);
+        try {
+            authenticationManager.authenticate(
+                    UsernamePasswordAuthenticationToken.unauthenticated(user.getEmail(), deleteRequest.password()));
+        } catch (AuthenticationException exception) {
+            rateLimitService.check("auth-delete", failureLimits);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ApiError("AUTHENTICATION_FAILED", "Email or password is incorrect."));
+        }
         if (dataRetentionService != null) {
             dataRetentionService.deleteUserAccountData(user.getId());
         }

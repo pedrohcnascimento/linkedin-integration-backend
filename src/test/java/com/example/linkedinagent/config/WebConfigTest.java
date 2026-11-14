@@ -46,5 +46,15 @@ class WebConfigTest {
         trustedProxyRequestWithSpoofedPrefix.addHeader("X-Forwarded-For", "192.0.2.99, 203.0.113.44, 10.0.0.2");
         assertThat(RateLimitInterceptor.resolveClientAddress(trustedProxyRequestWithSpoofedPrefix, trustedProxies))
                 .isEqualTo("203.0.113.44");
+
+        Set<String> cidrTrustedProxies = WebConfig.parseTrustedProxyIps("10.10.0.0/16, 172.16.0.0/12");
+        MockHttpServletRequest cidrProxyRequest = new MockHttpServletRequest();
+        cidrProxyRequest.setRemoteAddr("10.10.42.9");
+        cidrProxyRequest.addHeader("X-Forwarded-For", "198.51.100.77, 172.20.1.5");
+        assertThat(RateLimitInterceptor.resolveClientAddress(cidrProxyRequest, cidrTrustedProxies))
+                .isEqualTo("198.51.100.77");
+
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> WebConfig.parseTrustedProxyIps("not-an-ip/24"));
     }
 }
