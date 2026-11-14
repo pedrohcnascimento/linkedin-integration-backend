@@ -504,6 +504,66 @@ class DraftResourceIntegrationTest {
     }
 
     @Test
+    void oversizedChunkedRequestWithoutContentLengthReturns413PayloadTooLarge() throws Exception {
+        MockHttpSession session = loginAndRegister();
+        String oversizedBody = "{\"text\":\"" + "x".repeat(70_000) + "\",\"mediaCategory\":\"NONE\"}";
+
+        mockMvc.perform(post("/api/v1/drafts")
+                        .session(session)
+                        .with(csrf())
+                        .header("Transfer-Encoding", "chunked")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(oversizedBody))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.code").value("PAYLOAD_TOO_LARGE"));
+    }
+
+    @Test
+    void timedOutPublishingAttemptIsSweptToOutcomeUnknownScopedToTheCallingUser() throws Exception {
+        MockHttpSession firstSession = loginAndRegister();
+        MockHttpSession secondSession = loginAndRegister();
+        UUID firstDraftId = createDraft(firstSession);
+        UUID secondDraftId = createDraft(secondSession);
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", firstDraftId).session(firstSession).with(csrf()))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", secondDraftId).session(secondSession).with(csrf()))
+                .andExpect(status().isOk());
+
+        when(publishingClient.publish(any(), any()))
+                .thenThrow(new IllegalStateException("simulated process crash during publish"));
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", firstDraftId)
+                        .session(firstSession).with(csrf()).header("Idempotency-Key", "stuck-key-user-1"))
+                .andExpect(status().isInternalServerError());
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", secondDraftId)
+                        .session(secondSession).with(csrf()).header("Idempotency-Key", "stuck-key-user-2"))
+                .andExpect(status().isInternalServerError());
+
+        String staleTimestamp = java.time.Instant.now().minus(java.time.Duration.ofMinutes(3)).toString();
+        jdbcTemplate.update(
+                "UPDATE publication SET created_at = ? WHERE status = 'PUBLISHING'",
+                staleTimestamp);
+
+        // User 1 triggers a new publish attempt; only User 1's timed-out PUBLISHING row is transitioned to OUTCOME_UNKNOWN.
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", firstDraftId)
+                        .session(firstSession).with(csrf()).header("Idempotency-Key", "fresh-key-user-1"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PUBLICATION_OUTCOME_UNKNOWN"));
+
+        String firstUserStatus = jdbcTemplate.queryForObject(
+                "SELECT status FROM publication WHERE draft_id = ?",
+                String.class,
+                firstDraftId.toString());
+        String secondUserStatus = jdbcTemplate.queryForObject(
+                "SELECT status FROM publication WHERE draft_id = ?",
+                String.class,
+                secondDraftId.toString());
+        assertThat(firstUserStatus).isEqualTo("OUTCOME_UNKNOWN");
+        assertThat(secondUserStatus).isEqualTo("PUBLISHING");
+    }
+
+    @Test
     void malformedJsonBeanValidationAndTypeMismatchReturnSanitizedApiError() throws Exception {
         MockHttpSession session = loginAndRegister();
         UUID draftId = createDraft(session);

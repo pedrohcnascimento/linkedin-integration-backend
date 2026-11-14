@@ -179,7 +179,7 @@ class SecurityObservabilityAndLgpdIntegrationTest {
 
         URI authUri = oauthService.start(userId);
         String state = UriComponentsBuilder.fromUri(authUri).build().getQueryParams().getFirst("state");
-        LinkedInConnection connection = oauthService.complete(state, "auth-code-step14");
+        LinkedInConnection connection = oauthService.complete(userId, state, "auth-code-step14");
         assertThat(connection.status()).isEqualTo("ACTIVE");
 
         ContentDraft draft = draftWorkflowService.createDraft(userId, rawDraftText, "NONE", null, "Title");
@@ -247,7 +247,8 @@ class SecurityObservabilityAndLgpdIntegrationTest {
         assertThat(oauthTransactionRepository.findById(expiredTx.getId())).isEmpty();
         assertThat(oauthTransactionRepository.findById(activeTx.getId())).isPresent();
 
-        // Verify LGPD account & token erasure + audit anonymization (ON DELETE SET NULL)
+        // Verify LGPD account & token erasure + full audit metadata scrubbing (no memberSubject/externalPostId/draftId left behind)
+        List<UUID> priorUserEventIds = userAuditEvents.stream().map(AuditEvent::getId).toList();
         boolean deleted = dataRetentionService.deleteUserAccountData(userId);
         assertThat(deleted).isTrue();
         assertThat(appUserRepository.findById(userId)).isEmpty();
@@ -256,9 +257,27 @@ class SecurityObservabilityAndLgpdIntegrationTest {
         assertThat(contentDraftRepository.findById(draft.getId())).isEmpty();
         assertThat(publicationRepository.findById(published.getId())).isEmpty();
 
-        List<AuditEvent> deletionAudit = auditEventRepository.findAllByResourceIdOrderByOccurredAtDesc(userId.toString());
-        assertThat(deletionAudit)
-                .extracting(AuditEvent::getEventType)
-                .contains("USER_DATA_DELETED");
+        List<AuditEvent> scrubbedEvents = auditEventRepository.findAllById(priorUserEventIds);
+        assertThat(scrubbedEvents).isNotEmpty();
+        for (AuditEvent scrubbed : scrubbedEvents) {
+            assertThat(scrubbed.getAppUser()).isNull();
+            assertThat(scrubbed.getResourceId()).isNull();
+            assertThat(scrubbed.getMetadataSanitized())
+                    .isEqualTo("redacted=user_deleted")
+                    .doesNotContain("member-lgpd-01", "urn:li:share:9001", draft.getId().toString());
+        }
+
+        // Verify 90-day audit event retention purge
+        AuditEvent ancientAudit = AuditEvent.record(
+                null,
+                "ANCIENT_EVENT",
+                "SYSTEM",
+                null,
+                "OK",
+                now.minus(java.time.Duration.ofDays(91)),
+                "scope=test");
+        auditEventRepository.saveAndFlush(ancientAudit);
+        dataRetentionService.purgeExpiredOAuthTransactions();
+        assertThat(auditEventRepository.findById(ancientAudit.getId())).isEmpty();
     }
 }

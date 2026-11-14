@@ -4,6 +4,7 @@ import com.example.linkedinagent.service.RateLimitService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.web.util.matcher.IpAddressMatcher;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.util.ServletRequestPathUtils;
 
@@ -119,7 +120,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             return "unknown";
         }
         String trimmedRemote = remoteAddress.trim();
-        if (trustedProxyIps == null || trustedProxyIps.isEmpty() || !trustedProxyIps.contains(trimmedRemote)) {
+        if (!isTrustedProxy(trimmedRemote, trustedProxyIps)) {
             return trimmedRemote;
         }
         String forwardedFor = request.getHeader("X-Forwarded-For");
@@ -129,11 +130,30 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         String[] hops = forwardedFor.split(",", -1);
         for (int index = hops.length - 1; index >= 0; index--) {
             String candidate = hops[index].trim();
-            if (!candidate.isEmpty() && !trustedProxyIps.contains(candidate)) {
+            if (!candidate.isEmpty() && !isTrustedProxy(candidate, trustedProxyIps)) {
                 return candidate;
             }
         }
         return trimmedRemote;
+    }
+
+    static boolean isTrustedProxy(String ipAddress, Set<String> trustedProxySpecs) {
+        if (ipAddress == null || ipAddress.isBlank() || trustedProxySpecs == null || trustedProxySpecs.isEmpty()) {
+            return false;
+        }
+        if (trustedProxySpecs.contains(ipAddress)) {
+            return true;
+        }
+        for (String spec : trustedProxySpecs) {
+            try {
+                if (new IpAddressMatcher(spec).matches(ipAddress)) {
+                    return true;
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Non-IP candidate or malformed address in header is never treated as a trusted proxy.
+            }
+        }
+        return false;
     }
 
     private record IpPolicy(String scope, int maximumRequests, Duration window) {
