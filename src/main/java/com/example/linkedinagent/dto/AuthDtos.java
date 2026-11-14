@@ -38,6 +38,13 @@ public final class AuthDtos {
             String password) {
     }
 
+    @Schema(description = "Confirmação de senha para exclusão irreversível da conta local.")
+    public record DeleteAccountRequest(
+            @NotBlank @Size(max = 72)
+            @Schema(description = "Senha atual da conta local para confirmar a exclusão.", example = "senha-local-segura-123")
+            String password) {
+    }
+
     @Schema(description = "Token CSRF e nome do header exigido em requisições que alteram estado.")
     public record CsrfResponse(
             @Schema(description = "Nome do header HTTP no qual o token deve ser enviado.", example = "X-XSRF-TOKEN")

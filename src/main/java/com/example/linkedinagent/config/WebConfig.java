@@ -3,7 +3,13 @@ package com.example.linkedinagent.config;
 import com.example.linkedinagent.security.RateLimitInterceptor;
 import com.example.linkedinagent.service.RateLimitService;
 import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
+import org.springframework.security.web.util.matcher.IpAddressMatcher;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -19,12 +25,21 @@ import java.util.stream.Collectors;
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
+    private static final Logger log = LoggerFactory.getLogger(WebConfig.class);
+
     private final AppProperties appProperties;
     private final RateLimitService rateLimitService;
+    private final Environment environment;
 
     public WebConfig(AppProperties appProperties, RateLimitService rateLimitService) {
+        this(appProperties, rateLimitService, null);
+    }
+
+    @Autowired
+    public WebConfig(AppProperties appProperties, RateLimitService rateLimitService, Environment environment) {
         this.appProperties = appProperties;
         this.rateLimitService = rateLimitService;
+        this.environment = environment;
     }
 
     @Override
@@ -61,10 +76,18 @@ public class WebConfig implements WebMvcConfigurer {
         if (!StringUtils.hasText(configuredProxyIps)) {
             return Set.of();
         }
-        return Arrays.stream(configuredProxyIps.split(",", -1))
+        Set<String> specs = Arrays.stream(configuredProxyIps.split(",", -1))
                 .map(String::trim)
                 .filter(StringUtils::hasText)
                 .collect(Collectors.toUnmodifiableSet());
+        for (String spec : specs) {
+            try {
+                new IpAddressMatcher(spec);
+            } catch (IllegalArgumentException exception) {
+                throw new IllegalArgumentException("TRUSTED_PROXY_IPS contains an invalid IP or CIDR: " + spec, exception);
+            }
+        }
+        return specs;
     }
 
     private static boolean isValidOrigin(String origin) {
@@ -88,6 +111,9 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(@NonNull InterceptorRegistry registry) {
         Set<String> trustedProxyIps = parseTrustedProxyIps(appProperties.getSecurity().getTrustedProxyIps());
+        if (environment != null && environment.acceptsProfiles(Profiles.of("prod")) && trustedProxyIps.isEmpty()) {
+            log.warn("TRUSTED_PROXY_IPS is empty in prod profile; X-Forwarded-For headers will be ignored and rate limiting will use request.getRemoteAddr() directly. Configure TRUSTED_PROXY_IPS (IPs or CIDRs) when deploying behind a reverse proxy or load balancer.");
+        }
         registry.addInterceptor(new RateLimitInterceptor(rateLimitService, trustedProxyIps))
                 .addPathPatterns(
                         "/api/v1/auth/csrf",

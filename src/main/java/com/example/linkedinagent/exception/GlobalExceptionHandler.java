@@ -1,6 +1,7 @@
 package com.example.linkedinagent.exception;
 
 import com.example.linkedinagent.dto.ApiError;
+import com.example.linkedinagent.security.RequestCorrelationFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -15,11 +16,17 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import java.util.Arrays;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
     private static final long STORE_RETRY_AFTER_SECONDS = 5;
+    private static final Pattern SENSITIVE_LOG_PATTERN = Pattern.compile(
+            "(?i)(jdbc:[^\\s,;]+|(?:password|secret|token|authorization|key)\\s*[:=]\\s*[^\\s,;]+)");
 
     @ExceptionHandler(RateLimitExceededException.class)
     public ResponseEntity<ApiError> handleLimitExceeded(RateLimitExceededException exception) {
@@ -94,12 +101,23 @@ public class GlobalExceptionHandler {
                 .body(new ApiError(exception.getFailureCode(), "LinkedIn publication failed."));
     }
 
+    @ExceptionHandler(RequestCorrelationFilter.PayloadTooLargeInputStreamException.class)
+    public ResponseEntity<ApiError> handlePayloadTooLarge(
+            RequestCorrelationFilter.PayloadTooLargeInputStreamException exception) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new ApiError("PAYLOAD_TOO_LARGE", "Request body exceeds the maximum allowed size."));
+    }
+
     @ExceptionHandler({
             MethodArgumentNotValidException.class,
             HttpMessageNotReadableException.class,
             MethodArgumentTypeMismatchException.class
     })
     public ResponseEntity<ApiError> handleInvalidRequest(Exception exception) {
+        if (hasCause(exception, RequestCorrelationFilter.PayloadTooLargeInputStreamException.class)) {
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                    .body(new ApiError("PAYLOAD_TOO_LARGE", "Request body exceeds the maximum allowed size."));
+        }
         return ResponseEntity.badRequest()
                 .body(new ApiError("INVALID_REQUEST", "Request validation failed."));
     }
@@ -111,8 +129,36 @@ public class GlobalExceptionHandler {
                 || exception instanceof AuthenticationException) {
             throw exception;
         }
-        log.error("Unhandled runtime exception ({})", exception.getClass().getSimpleName(), exception);
+        if (hasCause(exception, RequestCorrelationFilter.PayloadTooLargeInputStreamException.class)) {
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                    .body(new ApiError("PAYLOAD_TOO_LARGE", "Request body exceeds the maximum allowed size."));
+        }
+        String sanitizedMessage = sanitizeLogMessage(exception.getMessage());
+        String stackSummary = Arrays.stream(exception.getStackTrace())
+                .limit(20)
+                .map(StackTraceElement::toString)
+                .collect(Collectors.joining("\n\tat "));
+        log.error("Unhandled runtime exception ({}): {}\n\tat {}",
+                exception.getClass().getName(), sanitizedMessage, stackSummary);
         return ResponseEntity.internalServerError()
                 .body(new ApiError("INTERNAL_ERROR", "An unexpected error occurred."));
+    }
+
+    static String sanitizeLogMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return "<no-message>";
+        }
+        return SENSITIVE_LOG_PATTERN.matcher(message).replaceAll("[REDACTED]");
+    }
+
+    private static boolean hasCause(Throwable throwable, Class<? extends Throwable> target) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (target.isInstance(current)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 }
