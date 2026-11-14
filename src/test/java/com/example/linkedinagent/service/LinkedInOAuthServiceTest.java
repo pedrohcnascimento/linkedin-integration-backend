@@ -43,7 +43,7 @@ class LinkedInOAuthServiceTest {
         when(fixture.tokenCipher.encrypt("access-token", USER_ID.toString()))
                 .thenThrow(new TokenEncryptionException("encryption unavailable"));
 
-        assertThatThrownBy(() -> fixture.service.complete(fixture.start(), "authorization-code"))
+        assertThatThrownBy(() -> fixture.service.complete(USER_ID, fixture.start(), "authorization-code"))
                 .isInstanceOf(TokenEncryptionException.class);
         assertReplayRejected(fixture);
         verify(fixture.authorizationRepository, never()).saveAndFlush(any(LinkedInAuthorization.class));
@@ -57,7 +57,7 @@ class LinkedInOAuthServiceTest {
                 .when(fixture.authorizationRepository)
                 .saveAndFlush(any(LinkedInAuthorization.class));
 
-        assertThatThrownBy(() -> fixture.service.complete(fixture.start(), "authorization-code"))
+        assertThatThrownBy(() -> fixture.service.complete(USER_ID, fixture.start(), "authorization-code"))
                 .isInstanceOf(IllegalStateException.class);
         assertReplayRejected(fixture);
         verify(fixture.authorizationRepository).saveAndFlush(any(LinkedInAuthorization.class));
@@ -67,7 +67,7 @@ class LinkedInOAuthServiceTest {
     void expiredOAuthStateIsRejectedAndConnectionReportsExpiredWhenTokenHasLapsed() {
         Fixture fixture = new Fixture(NOW.minusSeconds(1));
 
-        assertThatThrownBy(() -> fixture.service.complete(fixture.start(), "authorization-code"))
+        assertThatThrownBy(() -> fixture.service.complete(USER_ID, fixture.start(), "authorization-code"))
                 .isInstanceOf(LinkedInOAuthException.class)
                 .hasMessage("OAuth state is missing, expired, or already used.");
         verify(fixture.oauthClient, never()).exchangeAuthorizationCode(anyString());
@@ -92,7 +92,7 @@ class LinkedInOAuthServiceTest {
                 .thenReturn(new LinkedInOAuthClient.AccessToken(
                         "access-token", 3600, Optional.of("refresh-token"), Optional.empty()));
 
-        LinkedInConnection connection = fixture.service.complete(fixture.start(), "authorization-code");
+        LinkedInConnection connection = fixture.service.complete(USER_ID, fixture.start(), "authorization-code");
 
         assertThat(connection.status()).isEqualTo(LinkedInAuthorization.STATUS_ACTIVE);
         assertThat(connection.scopes()).isEqualTo("openid profile");
@@ -106,7 +106,7 @@ class LinkedInOAuthServiceTest {
     }
 
     private void assertReplayRejected(Fixture fixture) {
-        assertThatThrownBy(() -> fixture.service.complete(fixture.state.get(), "authorization-code"))
+        assertThatThrownBy(() -> fixture.service.complete(USER_ID, fixture.state.get(), "authorization-code"))
                 .isInstanceOf(LinkedInOAuthException.class)
                 .hasMessage("OAuth state is missing, expired, or already used.");
     }

@@ -41,7 +41,8 @@ public class RequestCorrelationFilter extends OncePerRequestFilter {
         MDC.put(MDC_REQUEST_ID_KEY, requestId);
         response.setHeader(REQUEST_ID_HEADER, requestId);
         try {
-            if (request.getContentLengthLong() > MAX_REQUEST_BODY_BYTES) {
+            boolean chunked = "chunked".equalsIgnoreCase(request.getHeader("Transfer-Encoding"));
+            if (!chunked && request.getContentLengthLong() > MAX_REQUEST_BODY_BYTES) {
                 rejectOversizedPayload(response);
                 return;
             }
@@ -88,7 +89,7 @@ public class RequestCorrelationFilter extends OncePerRequestFilter {
         return UUID.randomUUID().toString();
     }
 
-    private static final class PayloadTooLargeInputStreamException extends RuntimeException {
+    public static final class PayloadTooLargeInputStreamException extends RuntimeException {
     }
 
     private static final class BoundedHttpServletRequestWrapper extends HttpServletRequestWrapper {

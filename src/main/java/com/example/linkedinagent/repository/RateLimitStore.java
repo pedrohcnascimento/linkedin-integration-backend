@@ -9,4 +9,8 @@ import java.util.Optional;
 public interface RateLimitStore {
 
     Optional<Duration> acquire(List<RateLimitBucket> buckets);
+
+    default Optional<Duration> peek(List<RateLimitBucket> buckets) {
+        return Optional.empty();
+    }
 }
