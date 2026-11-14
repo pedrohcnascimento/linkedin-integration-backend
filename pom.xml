@@ -7,9 +7,9 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <!-- 4.1.0 é a versão GA confirmada em 10/06/2026. Se já existir um patch mais
+        <!-- 4.1.2 é a versão GA confirmada em 10/06/2026. Se já existir um patch mais
              novo (4.1.1, 4.1.2...) quando você buildar, sinta-se livre para atualizar. -->
-        <version>4.1.0</version>
+        <version>4.1.2</version>
         <relativePath/>
     </parent>
 
