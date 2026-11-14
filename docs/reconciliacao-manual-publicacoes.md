@@ -20,13 +20,14 @@ Quando o backend envia um post textual para `POST https://api.linkedin.com/rest/
 
 | Estado em `publication.status` | `failure_code` gravado | `content_draft.status` | Como surge no código (`DraftWorkflowService`) |
 |---|---|---|---|
-| `PUBLISHING` | `NULL` | `APPROVED` | Gravado em transação própria (`PROPAGATION_REQUIRES_NEW`) **antes** da chamada HTTP ao LinkedIn. Indica chamada ainda em curso **ou** interrupção abrupta do processo/JVM/banco antes de gravar a conclusão. |
-| `OUTCOME_UNKNOWN` | `LINKEDIN_RESULT_UNKNOWN` | `APPROVED` | Gravado após falha de transporte/timeout (`connectTimeout = 5s`, `readTimeout = 10s`), resposta HTTP `408`, `409` ou `5xx` do LinkedIn, ou resposta `2xx` sem o header `x-restli-id`. A requisição inicial recebeu `502 LINKEDIN_RESULT_UNKNOWN`. |
+| `PUBLISHING` | `NULL` | `APPROVED` | Gravado em transação própria **antes** da chamada HTTP ao LinkedIn. Indica chamada ainda em curso **ou** interrupção abrupta do processo/JVM antes de gravar a conclusão. Tentativas em `PUBLISHING` com mais de **2 minutos** são convertidas automaticamente para `OUTCOME_UNKNOWN` na próxima reserva do usuário ou pelo job agendado de retenção (`DataRetentionService`). |
+| `OUTCOME_UNKNOWN` | `LINKEDIN_RESULT_UNKNOWN` | `APPROVED` | Gravado após falha de transporte/timeout (`connectTimeout = 5s`, `readTimeout = 10s`), resposta HTTP `408`, `409` ou `5xx` do LinkedIn, resposta `2xx` sem o header `x-restli-id`, falha local em `completePublication` após o LinkedIn aceitar o post, ou expiração automática de `PUBLISHING` após 2 minutos. |
 
 Enquanto existir qualquer linha em `publication` com `status IN ('PUBLISHING', 'OUTCOME_UNKNOWN')` para `(app_user_id, draft_id)`:
 
+- Reutilizar uma `Idempotency-Key` em **outro** `draft_id` retorna `409 Conflict` com código `IDEMPOTENCY_KEY_CONFLICT`.
 - Repetir a **mesma** `Idempotency-Key` retorna `409 Conflict` com código `PUBLICATION_ALREADY_PROCESSED`.
-- Enviar uma **nova** `Idempotency-Key` para o mesmo `draft_id` retorna `409 Conflict` com código `PUBLICATION_OUTCOME_UNKNOWN`.
+- Enviar uma **nova** `Idempotency-Key` para o mesmo `draft_id` retorna `409 Conflict` com código `PUBLICATION_IN_PROGRESS` enquanto estiver em `PUBLISHING` (menos de 2 minutos) ou `PUBLICATION_OUTCOME_UNKNOWN` quando estiver em `OUTCOME_UNKNOWN`.
 - Editar o rascunho (`PATCH /api/v1/drafts/{id}`) permanece bloqueado porque `content_draft.status` já está em `APPROVED`.
 
 ---
@@ -36,7 +37,7 @@ Enquanto existir qualquer linha em `publication` com `status IN ('PUBLISHING', '
 1. **Respeite a janela mínima de segurança antes de tocar em `PUBLISHING`:** como `PUBLISHING` também representa uma chamada legítima em execução (timeout de conexão de 5 s + leitura de 10 s + margem de commit), **nunca** reconcilie um registro cujo `created_at` tenha menos de **2 minutos**, e confirme nos logs/processo da aplicação que não há requisição em curso para aquele `draft_id`.
 2. **Aguarde propagação no LinkedIn antes de concluir ausência:** aguarde pelo menos **2 a 5 minutos** após `publication.created_at` antes de assumir que o post não foi publicado no perfil.
 3. **Nunca execute `DELETE` em `publication`:** apagar a tentativa destrói o histórico e permite que um replay tardio com a mesma `Idempotency-Key` volte a publicar no LinkedIn sem intenção explícita do usuário.
-4. **Nunca altere `content_draft.approved_at`:** esse valor compõe o hash SHA-256 de `request_fingerprint` (`appUserId|draftId|approvedAt|idempotencyKey`).
+4. **Nunca altere `publication.request_fingerprint` nem `publication.draft_id`:** `request_fingerprint` armazena o hash SHA-256 de `appUserId|idempotencyKey`, garantindo que cada chave de idempotência do usuário fique vinculada exclusivamente ao `draft_id` original.
 5. **Formato estrito de datas (`InstantStringConverter`):** todas as colunas de instante (`published_at`, `updated_at`, `occurred_at`) são lidas pela aplicação via `Instant.parse(...)`. Grave **exclusivamente** strings UTC no padrão ISO-8601 com sufixo `Z` (ex.: `2026-10-30T12:15:00Z`). Formatos locais de `SYSDATE`/`DATETIME` sem `T` e `Z` quebrarão `GET /api/v1/publications` e `GET /api/v1/drafts` com erro de parse.
 6. **Proteção de segredos e privacidade:** `audit_event.metadata_sanitized` não deve conter tokens, senhas, cookies, identificadores de sessão nem dados pessoais desnecessários.
 7. **Backup / transação controlada:**

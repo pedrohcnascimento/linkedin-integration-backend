@@ -236,7 +236,8 @@ Executar e consolidar o **Passo 14 — Aplicar segurança, LGPD técnica e obser
 | `DATA-01` | Sensitive data | ✅ Verificado | `SecurityObservabilityAndLgpdIntegrationTest`, `DomainModelTest`, `DtoMappingTest` |
 | `CONFIG-01` | Production profile | ✅ Verificado | `ApiDocumentationProdProfileTest` (`/api-docs` e `/swagger-ui/**` retornam `404` em `prod`) |
 | `CONFIG-02` | Actuator exposure | ✅ Verificado | `SecurityObservabilityAndLgpdIntegrationTest` (`/actuator/health` sem detalhes internos; `/actuator/env`, `/beans`, `/configprops` bloqueados) |
-| `CONFIG-03` | Error handling | ✅ Verificado | `GlobalExceptionHandler`, `SecurityObservabilityAndLgpdIntegrationTest` (`500 INTERNAL_ERROR` sanitizado sem stack trace) |
+| `CONFIG-03` | Error handling | ✅ Verificado | `GlobalExceptionHandler`, `SecurityObservabilityAndLgpdIntegrationTest` (`500 INTERNAL_ERROR` sanitizado sem stack trace e redacting de credenciais/JDBC nos logs) |
+| `DB-01` | Database integrity (Oracle DDL) | ✅ Parcial (estático) | `SqlitePersistenceAndMigrationIntegrationTest.oracleMigrationsDefineEveryEntityTableColumnAndCaseInsensitiveEmailIndex` valida `V1 + V2` Oracle contra o metamodelo JPA e schema SQLite; pendente instância Oracle real |
 | `DB-02` | Database integrity (SQLite) | ✅ Verificado | `SqlitePersistenceAndMigrationIntegrationTest` (Flyway `V1 -> V2`, `PRAGMA foreign_keys = ON`, `ON DELETE CASCADE` / `SET NULL`, índice único case-insensitive) |
 | `DOC-01` | API inventory parity | ✅ Verificado | `ApiDocumentationLocalProfileTest.everyImplementedApiV1RouteIsPresentInOpenApiAndPlannedRoutesAreAbsent` |
 
@@ -244,33 +245,47 @@ Executar e consolidar o **Passo 14 — Aplicar segurança, LGPD técnica e obser
 
 ## 4. Arquivos adicionados ou atualizados
 
-- **Código de produção:**
+- **Código de produção e configuração:**
+  - `.gitignore`, `.env.example`, `.github/workflows/security-ci.yml`
+  - `src/main/resources/db/migration/oracle/V2__Add_local_user_credentials.sql`
   - `src/main/java/com/example/linkedinagent/domain/AuditEvent.java`
   - `src/main/java/com/example/linkedinagent/repository/AuditEventRepository.java`
   - `src/main/java/com/example/linkedinagent/repository/OAuthTransactionRepository.java`
+  - `src/main/java/com/example/linkedinagent/repository/PublicationRepository.java`
+  - `src/main/java/com/example/linkedinagent/repository/InMemoryRateLimitStore.java`
+  - `src/main/java/com/example/linkedinagent/repository/RateLimitStore.java`
+  - `src/main/java/com/example/linkedinagent/repository/RedisRateLimitStore.java`
   - `src/main/java/com/example/linkedinagent/service/AuditService.java`
   - `src/main/java/com/example/linkedinagent/service/DataRetentionService.java`
   - `src/main/java/com/example/linkedinagent/service/RegistrationService.java`
   - `src/main/java/com/example/linkedinagent/service/LinkedInOAuthService.java`
   - `src/main/java/com/example/linkedinagent/service/DraftWorkflowService.java`
+  - `src/main/java/com/example/linkedinagent/service/RateLimitService.java`
   - `src/main/java/com/example/linkedinagent/security/RequestCorrelationFilter.java`
   - `src/main/java/com/example/linkedinagent/security/RateLimitInterceptor.java`
   - `src/main/java/com/example/linkedinagent/config/SecurityConfig.java`
   - `src/main/java/com/example/linkedinagent/config/WebConfig.java`
   - `src/main/java/com/example/linkedinagent/exception/GlobalExceptionHandler.java`
+  - `src/main/java/com/example/linkedinagent/resource/AuthResource.java`
   - `src/main/java/com/example/linkedinagent/resource/DraftResource.java`
+  - `src/main/java/com/example/linkedinagent/dto/AuthDtos.java`
   - `src/main/resources/application.yml`
 - **Testes automatizados:**
-  - `src/test/java/com/example/linkedinagent/security/SecurityObservabilityAndLgpdIntegrationTest.java` (novo)
-  - `src/test/java/com/example/linkedinagent/domain/DomainModelTest.java` (expandido)
-  - `src/test/java/com/example/linkedinagent/resource/RateLimitWebIntegrationTest.java` (expandido)
-  - `src/test/java/com/example/linkedinagent/ApiDocumentationLocalProfileTest.java` (expandido)
+  - `src/test/java/com/example/linkedinagent/security/SecurityObservabilityAndLgpdIntegrationTest.java`
+  - `src/test/java/com/example/linkedinagent/repository/SqlitePersistenceAndMigrationIntegrationTest.java`
+  - `src/test/java/com/example/linkedinagent/domain/DomainModelTest.java`
+  - `src/test/java/com/example/linkedinagent/resource/RateLimitWebIntegrationTest.java`
+  - `src/test/java/com/example/linkedinagent/resource/AuthResourceIntegrationTest.java`
+  - `src/test/java/com/example/linkedinagent/resource/DraftResourceIntegrationTest.java`
+  - `src/test/java/com/example/linkedinagent/service/LinkedInOAuthServiceTest.java`
+  - `src/test/java/com/example/linkedinagent/config/WebConfigTest.java`
+  - `src/test/java/com/example/linkedinagent/ApiDocumentationLocalProfileTest.java`
 - **Documentação:**
-  - `docs/progress/STEP-14.md`, `docs/PLANO_AUDITORIA_SEGURANCA.md`, `docs/planejamento-tecnico.md`, `docs/status-atual.md` e `README.md`.
+  - `docs/progress/STEP-14.md`, `docs/reconciliacao-manual-publicacoes.md`, `docs/PLANO_AUDITORIA_SEGURANCA.md`, `docs/planejamento-tecnico.md`, `docs/status-atual.md` e `README.md`.
 
 ## 5. Comandos executados e resultado
 
-- `mvn -o -B test`: **89 testes executados em 16 classes de teste, 0 falhas, 0 erros, 0 ignorados**.
+- `mvn -o -B test`: **91 testes executados em 16 classes de teste, 0 falhas, 0 erros, 0 ignorados**.
 
 ## 6. Pendências externas que dependem de infraestrutura
 

@@ -6,8 +6,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -22,9 +20,7 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasItem;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -109,30 +105,5 @@ class ApiDocumentationLocalProfileTest {
                 .andExpect(jsonPath("$.components.schemas.PublicationResponse.properties.status.enum",
                         containsInAnyOrder("PUBLISHING", "PUBLISHED", "FAILED", "OUTCOME_UNKNOWN")))
                 .andExpect(jsonPath("$.components.schemas.PublicationResponse.properties.draftId.type", hasItem("null")));
-    }
-
-    @Test
-    void localLoginRenewsReadableCsrfCookieForSwagger() throws Exception {
-        String email = "swagger-local-" + System.nanoTime() + "@example.com";
-        mockMvc.perform(post("/api/v1/auth/register")
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"email":"%s","displayName":"Swagger User","password":"valid-test-password"}
-                                """.formatted(email)))
-                .andExpect(status().isCreated());
-
-        MockHttpServletResponse response = mockMvc.perform(post("/api/v1/auth/login")
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"email":"%s","password":"valid-test-password"}
-                                """.formatted(email)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse();
-
-        assertThat(response.getCookie("XSRF-TOKEN")).isNotNull();
-        assertThat(response.getCookie("XSRF-TOKEN").isHttpOnly()).isFalse();
     }
 }

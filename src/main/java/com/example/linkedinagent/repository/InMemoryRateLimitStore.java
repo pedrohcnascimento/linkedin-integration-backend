@@ -26,19 +26,9 @@ public class InMemoryRateLimitStore implements RateLimitStore {
     public synchronized Optional<Duration> acquire(List<RateLimitBucket> buckets) {
         long now = clock.millis();
         cleanupExpired(now);
-        long retryMillis = 0;
-
-        for (RateLimitBucket bucket : buckets) {
-            Counter counter = counters.get(bucket.storageKey());
-            if (counter == null || now >= counter.resetAtMillis()) {
-                continue;
-            }
-            if (counter.count() >= bucket.maximumRequests()) {
-                retryMillis = Math.max(retryMillis, counter.resetAtMillis() - now);
-            }
-        }
-        if (retryMillis > 0) {
-            return Optional.of(Duration.ofMillis(retryMillis));
+        Optional<Duration> blocked = findRetryAfter(buckets, now);
+        if (blocked.isPresent()) {
+            return blocked;
         }
 
         long newBuckets = buckets.stream().map(RateLimitBucket::storageKey).distinct()
@@ -56,6 +46,27 @@ public class InMemoryRateLimitStore implements RateLimitStore {
             }
         }
         return Optional.empty();
+    }
+
+    @Override
+    public synchronized Optional<Duration> peek(List<RateLimitBucket> buckets) {
+        long now = clock.millis();
+        cleanupExpired(now);
+        return findRetryAfter(buckets, now);
+    }
+
+    private Optional<Duration> findRetryAfter(List<RateLimitBucket> buckets, long now) {
+        long retryMillis = 0;
+        for (RateLimitBucket bucket : buckets) {
+            Counter counter = counters.get(bucket.storageKey());
+            if (counter == null || now >= counter.resetAtMillis()) {
+                continue;
+            }
+            if (counter.count() >= bucket.maximumRequests()) {
+                retryMillis = Math.max(retryMillis, counter.resetAtMillis() - now);
+            }
+        }
+        return retryMillis > 0 ? Optional.of(Duration.ofMillis(retryMillis)) : Optional.empty();
     }
 
     private void cleanupExpired(long now) {
