@@ -153,15 +153,15 @@ public class DraftWorkflowService {
         return draftRepository.saveAndFlush(draft);
     }
 
-    public Publication publish(UUID appUserId, UUID draftId, String idempotencyKey) {
-        if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 200) {
+    public Publication publish(UUID appUserId, UUID draftId, String testIdempotencyKey) {
+        if (testIdempotencyKey == null || testIdempotencyKey.isBlank() || testIdempotencyKey.length() > 200) {
             throw error("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key is required.", HttpStatus.BAD_REQUEST);
         }
         Instant cutoff = clock.instant().minus(STUCK_PUBLISHING_TIMEOUT);
         transactionTemplate.executeWithoutResult(transaction ->
                 publicationRepository.markTimedOutPublishingForUserAsOutcomeUnknown(appUserId, cutoff));
         PublishAttempt attempt = Objects.requireNonNull(
-                transactionTemplate.execute(transaction -> reservePublication(appUserId, draftId, idempotencyKey)),
+                transactionTemplate.execute(transaction -> reservePublication(appUserId, draftId, testIdempotencyKey)),
                 "Publication reservation transaction returned no result.");
         if (attempt.replay()) {
             log.info("Replayed completed publication userId={} draftId={} publicationId={} status={}",
@@ -215,11 +215,11 @@ public class DraftWorkflowService {
         return publicationRepository.markTimedOutPublishingAsOutcomeUnknown(cutoff);
     }
 
-    private PublishAttempt reservePublication(UUID appUserId, UUID draftId, String idempotencyKey) {
+    private PublishAttempt reservePublication(UUID appUserId, UUID draftId, String testIdempotencyKey) {
         Instant now = clock.instant();
         ContentDraft draft = draftRepository.findLockedByIdAndAppUser_Id(draftId, appUserId)
                 .orElseThrow(() -> error("DRAFT_NOT_FOUND", "Draft was not found.", HttpStatus.NOT_FOUND));
-        String fingerprint = fingerprint(appUserId, idempotencyKey);
+        String fingerprint = fingerprint(appUserId, testIdempotencyKey);
         var existing = publicationRepository.findByAppUser_IdAndRequestFingerprint(appUserId, fingerprint);
         if (existing.isPresent()) {
             Publication publication = existing.get();
