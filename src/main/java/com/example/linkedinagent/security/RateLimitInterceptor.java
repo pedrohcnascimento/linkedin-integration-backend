@@ -42,39 +42,39 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             HttpServletRequest request,
             HttpServletResponse response,
             Object handler) {
+        RateLimitDecision decision = resolveDecision(request);
+        // Fail-closed: every request that reaches this interceptor is always rate limited.
+        // The route only selects which bucket/limits apply; it can never skip the check.
+        rateLimitService.check(decision.scope(), decision.limits());
+        return true;
+    }
+
+    private RateLimitDecision resolveDecision(HttpServletRequest request) {
+        String method = request.getMethod();
         String path = applicationPath(request);
-        String route = request.getMethod() + " " + path;
-        IpPolicy policy = POLICIES.get(route);
+        IpPolicy policy = POLICIES.get(method + " " + path);
         if (policy != null) {
-            rateLimitService.check(policy.scope(), List.of(
+            return new RateLimitDecision(policy.scope(), List.of(
                     new RateLimitService.Limit("ip", clientAddress(request),
                             policy.maximumRequests(), policy.window())));
-            return true;
         }
         boolean publicationWrite = (path.equals("/api/v1/publications")
                 || path.startsWith("/api/v1/publications/")
                 || path.matches("/api/v1/drafts/[^/]+/publish"))
-                && List.of("POST", "PUT", "PATCH", "DELETE").contains(request.getMethod());
+                && List.of("POST", "PUT", "PATCH", "DELETE").contains(method);
         if (publicationWrite) {
-            rateLimitService.check("publication-write", authenticatedWriteLimits(request, 30, 10));
-            return true;
+            return new RateLimitDecision("publication-write", authenticatedWriteLimits(request, 30, 10));
         }
-        boolean draftWrite = ("POST".equals(request.getMethod()) && path.equals("/api/v1/drafts"))
-                || ("PATCH".equals(request.getMethod()) && path.matches("/api/v1/drafts/[^/]+"))
-                || ("POST".equals(request.getMethod()) && path.matches("/api/v1/drafts/[^/]+/approve"));
+        boolean draftWrite = ("POST".equals(method) && path.equals("/api/v1/drafts"))
+                || ("PATCH".equals(method) && path.matches("/api/v1/drafts/[^/]+"))
+                || ("POST".equals(method) && path.matches("/api/v1/drafts/[^/]+/approve"));
         if (draftWrite) {
-            rateLimitService.check("draft-write", authenticatedWriteLimits(request, 60, 30));
-            return true;
+            return new RateLimitDecision("draft-write", authenticatedWriteLimits(request, 60, 30));
         }
-        boolean authenticatedRead = "GET".equals(request.getMethod())
-                && (path.equals("/api/v1/drafts")
-                || path.equals("/api/v1/publications")
-                || path.equals("/api/v1/users/me")
-                || path.equals("/api/v1/linkedin/connection"));
-        if (authenticatedRead) {
-            rateLimitService.check("api-read", authenticatedWriteLimits(request, 240, 120));
-        }
-        return true;
+        // Any other request (authenticated reads such as GET /api/v1/drafts/{id}, or routes added
+        // later under the registered path patterns) falls into the default read bucket instead of
+        // bypassing rate limiting.
+        return new RateLimitDecision("api-read", authenticatedWriteLimits(request, 240, 120));
     }
 
     private List<RateLimitService.Limit> authenticatedWriteLimits(
@@ -157,5 +157,8 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     }
 
     private record IpPolicy(String scope, int maximumRequests, Duration window) {
+    }
+
+    private record RateLimitDecision(String scope, List<RateLimitService.Limit> limits) {
     }
 }

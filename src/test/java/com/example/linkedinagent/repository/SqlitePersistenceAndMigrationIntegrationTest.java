@@ -108,32 +108,53 @@ class SqlitePersistenceAndMigrationIntegrationTest {
              Statement statement = connection.createStatement()) {
             statement.execute("PRAGMA foreign_keys = ON");
 
-            try (ResultSet rs = statement.executeQuery(
-                    "SELECT email, display_name, password_hash FROM app_user WHERE id = '" + userId + "'")) {
-                assertThat(rs.next()).isTrue();
-                assertThat(rs.getString("email")).isEqualTo("Legacy.User@Example.com");
-                assertThat(rs.getString("display_name")).isEqualTo("Legacy User");
-                assertThat(rs.getString("password_hash")).isEmpty();
+            try (PreparedStatement selectUser = connection.prepareStatement(
+                    "SELECT email, display_name, password_hash FROM app_user WHERE id = ?")) {
+                selectUser.setString(1, userId);
+                try (ResultSet rs = selectUser.executeQuery()) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getString("email")).isEqualTo("Legacy.User@Example.com");
+                    assertThat(rs.getString("display_name")).isEqualTo("Legacy User");
+                    assertThat(rs.getString("password_hash")).isEmpty();
+                }
             }
 
-            assertThatThrownBy(() -> statement.executeUpdate("""
+            try (PreparedStatement insertDuplicate = connection.prepareStatement("""
                     INSERT INTO app_user (id, email, display_name, password_hash, status, created_at, updated_at)
-                    VALUES ('%s', 'legacy.user@example.com', 'Duplicate Case', 'hash', 'ACTIVE', '%s', '%s')
-                    """.formatted(UUID.randomUUID(), NOW, NOW)))
-                    .isInstanceOf(SQLException.class);
-
-            statement.executeUpdate("DELETE FROM content_draft WHERE id = '" + draftId + "'");
-            try (ResultSet rs = statement.executeQuery(
-                    "SELECT draft_id FROM publication WHERE id = '" + publicationId + "'")) {
-                assertThat(rs.next()).isTrue();
-                assertThat(rs.getString("draft_id")).isNull();
+                    VALUES (?, 'legacy.user@example.com', 'Duplicate Case', 'hash', 'ACTIVE', ?, ?)
+                    """)) {
+                insertDuplicate.setString(1, UUID.randomUUID().toString());
+                insertDuplicate.setString(2, NOW.toString());
+                insertDuplicate.setString(3, NOW.toString());
+                assertThatThrownBy(insertDuplicate::executeUpdate).isInstanceOf(SQLException.class);
             }
 
-            statement.executeUpdate("DELETE FROM app_user WHERE id = '" + userId + "'");
-            try (ResultSet rs = statement.executeQuery(
-                    "SELECT count(*) FROM publication WHERE id = '" + publicationId + "'")) {
-                assertThat(rs.next()).isTrue();
-                assertThat(rs.getInt(1)).isZero();
+            try (PreparedStatement deleteDraft = connection.prepareStatement(
+                    "DELETE FROM content_draft WHERE id = ?")) {
+                deleteDraft.setString(1, draftId);
+                deleteDraft.executeUpdate();
+            }
+            try (PreparedStatement selectDraftId = connection.prepareStatement(
+                    "SELECT draft_id FROM publication WHERE id = ?")) {
+                selectDraftId.setString(1, publicationId);
+                try (ResultSet rs = selectDraftId.executeQuery()) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getString("draft_id")).isNull();
+                }
+            }
+
+            try (PreparedStatement deleteUser = connection.prepareStatement(
+                    "DELETE FROM app_user WHERE id = ?")) {
+                deleteUser.setString(1, userId);
+                deleteUser.executeUpdate();
+            }
+            try (PreparedStatement countPublications = connection.prepareStatement(
+                    "SELECT count(*) FROM publication WHERE id = ?")) {
+                countPublications.setString(1, publicationId);
+                try (ResultSet rs = countPublications.executeQuery()) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getInt(1)).isZero();
+                }
             }
         }
     }
