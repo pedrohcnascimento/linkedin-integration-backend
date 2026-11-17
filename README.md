@@ -6,7 +6,7 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-✅ **Passo 14 — Segurança, LGPD técnica e observabilidade concluído** ([`docs/progress/STEP-14.md`](docs/progress/STEP-14.md)); próxima etapa do roteiro: **Passo 15 — Dockerizar e documentar a execução**. **Passo 11 (oportunidades/vagas)** permanece formalmente adiado para ciclo posterior ([`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)). OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação, publicação idempotente via Posts API e histórico paginado por usuário, com contrato OpenAPI verificado automaticamente contra todas as rotas `/api/v1/**` (e desativado em `prod`), trilha de auditoria sanitizada (`audit_event`), retenção/exclusão LGPD (`DataRetentionService`), correlação `X-Request-Id` e suíte automatizada de 98 testes em 20 classes cobrindo todas as camadas DDD. Reservas são persistidas antes da chamada externa; resultados ambíguos bloqueiam novas tentativas até reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md)). A validação de concorrência em Oracle descartável do Passo 10 permanece pendente de infraestrutura. Veja [`docs/status-atual.md`](docs/status-atual.md).
+✅ **Passo 15 — Dockerizar e documentar a execução concluído** ([`docs/progress/STEP-15.md`](docs/progress/STEP-15.md)), em continuidade ao **Passo 14 — Segurança, LGPD técnica e observabilidade** ([`docs/progress/STEP-14.md`](docs/progress/STEP-14.md)); próxima etapa do roteiro: **Passo 16 — Revisão de portfólio e CI/CD**. **Passo 11 (oportunidades/vagas)** permanece formalmente adiado para ciclo posterior ([`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)). OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação, publicação idempotente via Posts API e histórico paginado por usuário, com contrato OpenAPI verificado automaticamente contra todas as rotas `/api/v1/**` (e desativado em `prod`), trilha de auditoria sanitizada (`audit_event`), retenção/exclusão LGPD (`DataRetentionService`), correlação `X-Request-Id`, empacotamento Docker multi-stage sem root com `HEALTHCHECK` e suíte automatizada cobrindo todas as camadas DDD. Reservas são persistidas antes da chamada externa; resultados ambíguos bloqueiam novas tentativas até reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md)). A validação de concorrência em Oracle descartável do Passo 10 permanece pendente de infraestrutura. Veja [`docs/status-atual.md`](docs/status-atual.md).
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) e o roteiro, incluindo os próximos passos, em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
@@ -144,6 +144,28 @@ RATE_LIMIT_REDIS_URL (somente no perfil prod)
 ```
 
 Nenhuma dessas variáveis deve conter valores reais no repositório.
+
+### Como rodar com Docker
+
+O projeto inclui [`Dockerfile`](Dockerfile) multi-stage (build com Maven + JDK 21 e execução em JRE 21 com usuário não-root `appuser` e `HEALTHCHECK` em `/actuator/health`), [`.dockerignore`](.dockerignore) (que impede a inclusão de `.env` e bancos SQLite locais na imagem) e [`docker-compose.yml`](docker-compose.yml):
+
+```bash
+# 1. Copie o .env.example para .env e garanta SPRING_PROFILES_ACTIVE=local
+cp .env.example .env
+
+# 2. Suba com Docker Compose (usa volume nomeado para o SQLite em /app/data)
+docker compose up --build
+
+# Opcional: para subir também uma instância Redis local de teste
+docker compose --profile prod-local up --build
+```
+
+Para build e execução avulsa da imagem:
+
+```bash
+docker build -t linkedin-integration-backend:0.1.0 .
+docker run --rm -p 8080:8080 --env-file .env -v linkedin_sqlite_data:/app/data linkedin-integration-backend:0.1.0
+```
 
 ### Oracle em produção
 

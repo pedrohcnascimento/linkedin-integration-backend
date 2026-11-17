@@ -1,8 +1,8 @@
 # Status atual do projeto
 
-**Atualizado em:** 11/11/2026
-**Etapa atual:** Passo 14 concluído; próxima etapa do roteiro: **Passo 15 — Dockerizar e documentar a execução** (Passo 11 adiado para ciclo posterior; validação Oracle do Passo 10 permanece pendente de infraestrutura)
-**Referências:** [`docs/progress/STEP-14.md`](progress/STEP-14.md), [`docs/PLANO_AUDITORIA_SEGURANCA.md`](PLANO_AUDITORIA_SEGURANCA.md), [`docs/progress/STEP-13.md`](progress/STEP-13.md), [`docs/progress/STEP-12.md`](progress/STEP-12.md), [`docs/progress/STEP-11.md`](progress/STEP-11.md), [`docs/progress/STEP-10.md`](progress/STEP-10.md), [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md) e o [plano da próxima release](planejamento-tecnico.md#plano-proposto-para-a-próxima-release)
+**Atualizado em:** 16/11/2026
+**Etapa atual:** Passo 15 concluído; próxima etapa do roteiro: **Passo 16 — Revisão de portfólio e CI/CD** (Passo 11 adiado para ciclo posterior; validação Oracle do Passo 10 permanece pendente de infraestrutura)
+**Referências:** [`docs/progress/STEP-15.md`](progress/STEP-15.md), [`docs/progress/STEP-14.md`](progress/STEP-14.md), [`docs/PLANO_AUDITORIA_SEGURANCA.md`](PLANO_AUDITORIA_SEGURANCA.md), [`docs/progress/STEP-13.md`](progress/STEP-13.md), [`docs/progress/STEP-12.md`](progress/STEP-12.md), [`docs/progress/STEP-11.md`](progress/STEP-11.md), [`docs/progress/STEP-10.md`](progress/STEP-10.md), [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md) e o [plano da próxima release](planejamento-tecnico.md#plano-proposto-para-a-próxima-release)
 
 Este documento consolida o estado vigente observado no código e na configuração do projeto. Os relatórios em `docs/progress/` registram decisões e validações do momento em que foram escritos; não são a fonte para pendências atuais.
 

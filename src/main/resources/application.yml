@@ -4,6 +4,11 @@
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:prod}
 
+  data:
+    redis:
+      repositories:
+        enabled: false
+
   datasource:
     driver-class-name: org.sqlite.JDBC
     hikari:

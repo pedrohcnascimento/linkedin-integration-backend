@@ -1,0 +1,26 @@
+# Git e metadados de IDE
+.git
+.github
+.gitignore
+.idea
+*.iml
+
+# Artefatos de build local
+target/
+*.log
+
+# Segredos e bancos de dados locais (NUNCA incluir na imagem)
+.env
+.env.*
+!.env.example
+data/*.db
+data/*.db-shm
+data/*.db-wal
+*.sqlite
+*.db
+
+# Documentação (não necessária no contexto de compilação da imagem)
+docs/
+README.md
+CONTRIBUTING.md
+SECURITY.md

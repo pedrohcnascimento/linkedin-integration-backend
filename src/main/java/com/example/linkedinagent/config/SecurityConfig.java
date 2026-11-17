@@ -85,7 +85,16 @@ public class SecurityConfig {
 
     @Bean
     SessionAuthenticationStrategy sessionAuthenticationStrategy() {
-        return new ChangeSessionIdAuthenticationStrategy();
+        ChangeSessionIdAuthenticationStrategy delegate = new ChangeSessionIdAuthenticationStrategy();
+        return (authentication, request, response) -> {
+            HttpSession existingSession = request.getSession(false);
+            String previousId = existingSession != null ? existingSession.getId() : null;
+            delegate.onAuthentication(authentication, request, response);
+            HttpSession currentSession = request.getSession(false);
+            if (currentSession != null && previousId != null && previousId.equals(currentSession.getId())) {
+                request.changeSessionId();
+            }
+        };
     }
 
     @Bean
