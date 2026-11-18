@@ -1,5 +1,9 @@
 # STEP-02 — Validar a API e congelar o escopo da v1
 
+> **Registro histórico da etapa.** Este relatório preserva o estado e as pendências observadas quando foi escrito; não representa o status atual do projeto. A escolha entre Posts API e UGC Post API, descrita abaixo como pendente, foi resolvida em favor da Posts API em [`STEP-02b.md`](STEP-02b.md). Consulte também a [matriz de capacidades vigente](../linkedin-capability-matrix.md) e [`docs/status-atual.md`](../status-atual.md).
+
+> **Atualização de referência:** a menção original à seção "Decisão pendente" descrevia o estado da matriz naquele momento; essa seção foi substituída pela decisão registrada. Não há bloqueio atual quanto à escolha da API: a Posts API foi escolhida.
+
 **Objetivo:** transformar a pesquisa da API em decisões implementáveis, sem gerar código.
 
 ## Ações realizadas

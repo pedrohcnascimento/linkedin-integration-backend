@@ -1,5 +1,7 @@
 # STEP-05 — Configurar ambientes e segredos
 
+> **Registro histórico da etapa.** Este relatório preserva o estado observado quando foi escrito; não representa o status atual do projeto. Consulte [`docs/status-atual.md`](../status-atual.md) para o estado e as pendências vigentes.
+
 **Objetivo:** separar `local`/`test`/`prod` desde o primeiro commit funcional e mapear de forma segura os segredos (`.env`) para as configurações do Spring.
 
 ## Alterações

@@ -6,9 +6,13 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-🚧 **Passo 8 implementado e validado por testes automatizados** — conexão/desconexão LinkedIn via OAuth, tokens cifrados, isolamento por usuário e rate limiting para autenticação/OAuth. App real, smoke test e validação no JDK 21 seguem pendentes antes de produção; publicação e demais recursos de negócio estão fora do passo atual.
+✅ **Passo 15 — Dockerizar e documentar a execução concluído** ([`docs/progress/STEP-15.md`](docs/progress/STEP-15.md)), em continuidade ao **Passo 14 — Segurança, LGPD técnica e observabilidade** ([`docs/progress/STEP-14.md`](docs/progress/STEP-14.md)); próxima etapa do roteiro: **Passo 16 — Revisão de portfólio e CI/CD**. **Passo 11 (oportunidades/vagas)** permanece formalmente adiado para ciclo posterior ([`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)). OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação, publicação idempotente via Posts API e histórico paginado por usuário, com contrato OpenAPI verificado automaticamente contra todas as rotas `/api/v1/**` (e desativado em `prod`), trilha de auditoria sanitizada (`audit_event`), retenção/exclusão LGPD (`DataRetentionService`), correlação `X-Request-Id`, empacotamento Docker multi-stage sem root com `HEALTHCHECK` e suíte automatizada cobrindo todas as camadas DDD. Reservas são persistidas antes da chamada externa; resultados ambíguos bloqueiam novas tentativas até reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md)). A validação de concorrência em Oracle descartável do Passo 10 permanece pendente de infraestrutura. Veja [`docs/status-atual.md`](docs/status-atual.md).
 
-Acompanhe o progresso em [`docs/progress/`](docs/progress) (um arquivo `STEP-XX.md` por etapa concluída) e o roteiro completo em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
+Acompanhe o progresso em [`docs/progress/`](docs/progress) e o roteiro, incluindo os próximos passos, em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
+
+### Como interpretar a documentação
+
+Para o **estado funcional e as pendências atuais**, prevalece [`docs/status-atual.md`](docs/status-atual.md); este README é o resumo voltado a quem usa o projeto. O planejamento técnico é a referência para o roteiro e os requisitos futuros, mas não comprova que uma etapa foi implementada. Para fatos e decisões sobre a API do LinkedIn, prevalece [`docs/linkedin-capability-matrix.md`](docs/linkedin-capability-matrix.md), inclusive quando houver divergência com o planejamento. Os relatórios em `docs/progress/` são registros históricos das etapas e decisões no momento em que foram escritos; não devem ser usados como fonte de pendências ou decisões vigentes.
 
 ## Stack técnica
 
@@ -16,25 +20,37 @@ Acompanhe o progresso em [`docs/progress/`](docs/progress) (um arquivo `STEP-XX.
 |---|---|
 | Linguagem | Java 21 (LTS) |
 | Build | Maven |
-| Framework | Spring Boot **4.1.0** (Webmvc, Security, Validation, Actuator) |
-| Persistência | SQLite (local/testes) e PostgreSQL (produção), via JPA/Hibernate 7 + Flyway |
+| Framework | Spring Boot **4.1.2** (Webmvc, Security, Validation, Actuator) |
+| Persistência | SQLite (local/testes); Oracle configurado no perfil `prod` e coberto por teste de integração com Testcontainers (`ProdProfileOracleRedisIntegrationTest`) |
 | Autenticação externa | OAuth 2.0 + OpenID Connect com o LinkedIn |
-| Publicação | LinkedIn **Posts API** (`/rest/posts`) — ver `docs/linkedin-capability-matrix.md` |
+| LinkedIn | OAuth 2.0 e publicação textual via **Posts API** implementados |
 | Documentação de API | springdoc-openapi 3.x |
-| Empacotamento | Docker |
+| Empacotamento | JAR executável (Spring Boot) |
 
 > Nota de versão: o projeto usa Spring Boot 4.x porque a linha 3.5.x encerrou o suporte OSS em 25/06/2026. O Boot 4 trouxe starters modulares (`spring-boot-starter-webmvc` no lugar de `spring-boot-starter-web`, por exemplo) — se for comparar com tutoriais mais antigos, tenha isso em mente.
 
-## O que este projeto faz (v1)
+## Estado funcional
 
-- Permite que vários usuários criem contas locais e autentiquem-se em sessões independentes
-- Conecta a conta do LinkedIn do usuário via OAuth 2.0
-- Cria e revisa rascunhos de publicação
-- Publica texto e URLs no LinkedIn em nome do usuário, mediante aprovação explícita (produto **Share on LinkedIn**, escopo `w_member_social`)
-- Mantém histórico local de publicações, com idempotência
-- Permite registrar e organizar oportunidades de vaga **manualmente ou de fontes autorizadas** — sem buscar, salvar ou se candidatar automaticamente dentro do LinkedIn
+### Implementado
 
-## O que este projeto deliberadamente não faz
+- Cadastro de contas locais, login por sessão, consulta do usuário autenticado e logout.
+- Token CSRF para requisições que alteram estado.
+- Conexão LinkedIn via OAuth 2.0, consulta sanitizada do estado da conexão e desconexão local. Tokens são cifrados em repouso e não são devolvidos pela API.
+- Rate limiting para autenticação, OAuth e publicação de rascunhos.
+- Rascunhos textuais: criação, listagem paginada, edição antes da aprovação, aprovação e publicação autenticada com `Idempotency-Key`.
+- Adaptador da Posts API para publicação textual de membro; respostas externas não são devolvidas sem sanitização.
+
+Essas funcionalidades são expostas pelos endpoints listados abaixo e cobertas por testes automatizados. O fluxo OAuth foi validado contra o app real no Developer Portal; o provedor continua sendo simulado na suíte automatizada.
+
+### Em andamento / planejado
+
+- **Passo 16 (próxima etapa):** Revisão final de portfólio, homologação em nuvem e CI/CD (ver [`docs/status-atual.md`](docs/status-atual.md)).
+- **Passo 10 (validação de concorrência em banco de produção):** as migrations Oracle, a validação Hibernate (`ddl-auto=validate`) e o fluxo de publicação com Redis são validados automaticamente em `ProdProfileOracleRedisIntegrationTest` (Testcontainers) quando há Docker disponível; resta executar testes de concorrência multi-thread com lock pessimista contra a instância Oracle de homologação.
+- **Passo 11 (adiado para ciclo posterior):** registro local de oportunidades e integração com fontes externas autorizadas de vagas não serão implementados neste momento (ver [`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)).
+
+As tabelas ou migrations preliminares de oportunidades não significam que esse recurso esteja executável. O histórico de publicações tem endpoint paginado; não há endpoints de oportunidades.
+
+### Fora do escopo
 
 - Não automatiza login, navegação ou cliques no LinkedIn
 - Não usa cookies de sessão do LinkedIn
@@ -42,21 +58,56 @@ Acompanhe o progresso em [`docs/progress/`](docs/progress) (um arquivo `STEP-XX.
 - Não envia convites, mensagens ou candidaturas automaticamente
 - Não usa Easy Apply de forma automatizada
 
+## Endpoints disponíveis
+
+Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem sessão local; requisições que alteram estado também exigem CSRF.
+
+| Método e caminho | Acesso | Função |
+|---|---|---|
+| `GET /api/v1/auth/csrf` | Público | Obtém o token CSRF e o nome do header |
+| `POST /api/v1/auth/register` | Público | Cria uma conta local |
+| `POST /api/v1/auth/login` | Público | Autentica e inicia uma sessão |
+| `POST /api/v1/auth/logout` | Sessão + CSRF | Encerra a sessão (`204`) |
+| `GET /api/v1/users/me` | Sessão | Consulta a conta autenticada |
+| `DELETE /api/v1/users/me` | Sessão + CSRF + senha | Exclui a conta local, remove tokens/transações e anonimiza eventos de auditoria (`204`) |
+| `GET /api/v1/linkedin/oauth/start` | Sessão | Inicia o fluxo OAuth e redireciona ao LinkedIn |
+| `GET /api/v1/linkedin/oauth/callback` | Sessão + `state` de uso único vinculado ao usuário | Conclui o OAuth e retorna estado sanitizado |
+| `GET /api/v1/linkedin/connection` | Sessão | Consulta o estado da conexão LinkedIn |
+| `DELETE /api/v1/linkedin/connection` | Sessão + CSRF | Remove a autorização local (`204`) |
+| `POST /api/v1/drafts` | Sessão + CSRF | Cria um rascunho textual |
+| `GET /api/v1/drafts?page=0&size=20` | Sessão | Lista os rascunhos do usuário; página de 0 a 50 itens |
+| `PATCH /api/v1/drafts/{id}` | Sessão + CSRF | Edita texto/título enquanto o rascunho está em `DRAFT` |
+| `POST /api/v1/drafts/{id}/approve` | Sessão + CSRF | Aprova o rascunho |
+| `POST /api/v1/drafts/{id}/publish` | Sessão + CSRF | Publica rascunho aprovado; exige `Idempotency-Key` |
+| `GET /api/v1/publications?page=0&size=20` | Sessão | Histórico de publicações do usuário; tamanho máximo 50 |
+
+`GET /actuator/health` também está disponível para health check. A documentação interativa da API (`/swagger-ui.html`) e o OpenAPI (`/api-docs`) são habilitados apenas nos perfis `local` e `test`; no perfil `prod`, ambos ficam desativados.
+
+## Próximos passos
+
+1. Executar o **Passo 16 — Revisão de portfólio e CI/CD**, confirmando a execução no GitHub Actions (com `NVD_API_KEY` configurada nos secrets para o OWASP Dependency-Check e o job `docker-smoke`).
+2. Validar concorrência multi-thread e origem de IP atrás de proxy confiável (`TRUSTED_PROXY_IPS`) no ambiente Oracle/Redis de homologação antes de exposição pública.
+3. Somente em ciclo posterior à estabilização da v1, retomar o Passo 11 (oportunidades locais e fontes externas autorizadas de vagas — ver [`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)).
+
 ## Arquitetura
 
-Hexagonal leve (ports & adapters): domínio isolado de Spring, JPA e do LinkedIn. Detalhes completos na seção 4 de [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#4-arquitetura-proposta).
+Arquitetura em camadas orientada a **Domain-Driven Design (DDD)**, inspirada no padrão organizacional de [`ChallengeEcopulseMaven`](https://github.com/pedrohcnascimento/ChallengeEcopulseMaven): cada pacote possui responsabilidade única, sem diretórios vazios nem wrappers redundantes, mantendo os modelos e regras de domínio em `domain`, os contratos HTTP isolados em `dto`, a exposição REST em `resource` e a orquestração transacional em `service`. Detalhes adicionais na seção 4 de [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#4-arquitetura-proposta).
 
 ```
 com.example.linkedinagent
-├── domain        # regras de negócio, sem dependência de framework
-├── application    # casos de uso (ports/in, ports/out)
-├── adapter
-│   ├── in/web     # controllers REST
-│   └── out        # LinkedIn HTTP client, persistência JPA, segurança
-├── config
-├── exception
-└── shared
+├── LinkedinAgentApplication.java   # Ponto de entrada Spring Boot e metadados OpenAPI
+├── client/                         # Clientes HTTP externos para a API oficial do LinkedIn (OAuth 2.0 + Posts API)
+├── config/                         # Configurações de segurança, CORS, rate limit, OpenAPI, clientes HTTP e Clock
+├── domain/                         # Entidades e objetos de valor do domínio com invariantes e transições de estado
+├── dto/                            # Contratos REST de entrada/saída (*Dtos + ApiError), isolados do domínio
+├── exception/                      # Exceções de domínio/integração e GlobalExceptionHandler (@RestControllerAdvice)
+├── repository/                     # Repositórios Spring Data JPA, conversores de persistência e RateLimitStore
+├── resource/                       # Endpoints REST (/api/v1/**) finos: AuthResource, LinkedInOAuthResource, DraftResource
+├── security/                       # Principal autenticado, UserDetailsService, cifragem AES-GCM de tokens e RateLimitInterceptor
+└── service/                        # Regras de aplicação e orquestração transacional (Registration, OAuth, DraftWorkflow, RateLimit)
 ```
+
+Fluxo de dependências: `resource` + `dto` → `service` → `domain` + `repository` + `client` + `security` (com tratamento transversal em `exception` e infraestrutura de beans em `config`).
 
 ## Como rodar
 
@@ -66,11 +117,13 @@ Este repositório **não inclui o Maven Wrapper** (`mvnw`/`mvnw.cmd`) ainda — 
 # build + testes
 mvn clean test
 
-# subir localmente
-mvn spring-boot:run
+# subir localmente (defina SPRING_PROFILES_ACTIVE=local no .env ou na linha de comando)
+SPRING_PROFILES_ACTIVE=local mvn spring-boot:run
 ```
 
 No IntelliJ: abra o projeto como Maven (`pom.xml`), deixe indexar as dependências, e rode `LinkedinAgentApplication` ou a suíte de testes pela própria IDE.
+
+**Atenção ao perfil padrão (`prod` fail-safe):** em `application.yml`, a propriedade é `spring.profiles.active: ${SPRING_PROFILES_ACTIVE:prod}`. Isso significa que, se `SPRING_PROFILES_ACTIVE` não estiver definida no ambiente nem no arquivo `.env`, a aplicação iniciará no perfil `prod` por segurança (exigindo Oracle e Redis e desativando o Swagger). Para desenvolvimento local com SQLite e documentação interativa (`/swagger-ui.html`), defina explicitamente `SPRING_PROFILES_ACTIVE=local` (por exemplo no `.env` ou via variável de ambiente). Não habilite as propriedades `springdoc.api-docs.enabled` ou `springdoc.swagger-ui.enabled` em produção.
 
 Depois de validar que builda, você pode gerar o wrapper com `mvn -N wrapper:wrapper` (ou `mvn wrapper:wrapper` na raiz) para passar a usar `./mvnw` — mais consistente entre máquinas.
 
@@ -93,15 +146,38 @@ RATE_LIMIT_REDIS_URL (somente no perfil prod)
 
 Nenhuma dessas variáveis deve conter valores reais no repositório.
 
-### PostgreSQL em produção
+### Como rodar com Docker
 
-O perfil `prod` usa o driver PostgreSQL empacotado pela aplicação, executa as migrations Flyway e inicia o Hibernate com `ddl-auto=validate` (não cria nem atualiza tabelas). A URL deve usar o formato `jdbc:postgresql://<host>:<porta>/<banco>`; habilite TLS conforme o serviço, por exemplo com `?sslmode=require`.
+O projeto inclui [`Dockerfile`](Dockerfile) multi-stage (build com Maven + JDK 21 e execução em JRE 21 com usuário não-root `appuser` e `HEALTHCHECK` em `/actuator/health`), [`.dockerignore`](.dockerignore) (que impede a inclusão de `.env` e bancos SQLite locais na imagem) e [`docker-compose.yml`](docker-compose.yml):
+
+```bash
+# 1. Copie o .env.example para .env e garanta SPRING_PROFILES_ACTIVE=local
+cp .env.example .env
+
+# 2. Suba com Docker Compose (define SPRING_PROFILES_ACTIVE=local por padrão e usa volume nomeado para o SQLite em /app/data)
+docker compose up --build
+
+# Opcional: para subir também um container Redis local em 127.0.0.1:6379 para testes manuais do RedisRateLimitStore
+# (observação: o serviço app no perfil local usa InMemoryRateLimitStore; somente o perfil prod usa Redis via RATE_LIMIT_REDIS_URL)
+docker compose --profile redis-local up --build
+```
+
+Para build e execução avulsa da imagem:
+
+```bash
+docker build -t linkedin-integration-backend:0.1.0 .
+docker run --rm -p 8080:8080 --env-file .env -v linkedin_sqlite_data:/app/data linkedin-integration-backend:0.1.0
+```
+
+### Oracle em produção
+
+O perfil `local` usa SQLite e o perfil `prod` está configurado para Oracle, com driver e migration Oracle do Flyway e Hibernate `ddl-auto=validate` (não cria nem atualiza tabelas). Essa configuração não comprova que o schema tenha sido aplicado ou validado em um serviço Oracle; faça essa validação em banco de teste descartável antes de considerar o perfil pronto para produção. A URL deve usar o formato Oracle aceito pelo ambiente, por exemplo `jdbc:oracle:thin:@<host>:1521:<service-name>`.
 
 Configure no ambiente de execução, sem versionar credenciais:
 
 ```text
 SPRING_PROFILES_ACTIVE=prod
-DATABASE_URL=jdbc:postgresql://<host>:5432/linkedinagent?sslmode=require
+DATABASE_URL=jdbc:oracle:thin:@<host>:1521:<service-name>
 DATABASE_USERNAME=<usuario do banco>
 DATABASE_PASSWORD=<senha do banco>
 LINKEDIN_CLIENT_ID=<client id>
@@ -118,41 +194,32 @@ CORS_ALLOWED_ORIGINS=https://<frontend>
 
 #### Rate limiting
 
-Login é limitado por IP (30 tentativas/15 min) e conta (8/15 min); cadastro por IP (10/h) e endereço de conta (3/24 h); início do OAuth por IP (30/15 min), usuário (10/h) e sessão (8/15 min); callback por IP (60/15 min) e state (6/15 min). Os contadores usam janelas fixas iniciadas na primeira tentativa. A resposta de limite é `429 RATE_LIMITED`, genérica, com `Retry-After` em segundos. Publicações ainda não têm rotas; o interceptor já aplica limites por IP, usuário e sessão em futuras operações de escrita sob `/api/v1/publications/**`.
+Login é limitado por IP (30 tentativas/15 min) e conta (8/15 min); cadastro por IP (10/h) e endereço de conta (3/24 h); início do OAuth por IP (30/15 min), usuário (10/h) e sessão (8/15 min); callback por IP (60/15 min) e state (6/15 min). A publicação de draft é limitada por IP (30/15 min), usuário (10/15 min) e sessão (10/15 min). Os contadores usam janelas fixas iniciadas na primeira tentativa. A resposta de limite é `429 RATE_LIMITED`, genérica, com `Retry-After` em segundos.
 
 No perfil `prod`, Redis é obrigatório e compartilhado por todas as instâncias. Scripts Lua incrementam atomicamente os contadores e as chaves expiram ao fim das janelas. Configure `RATE_LIMIT_REDIS_URL` com autenticação e TLS quando disponível, e use o mesmo `RATE_LIMIT_HMAC_KEY` Base64 de pelo menos 32 bytes em todas as instâncias (por exemplo, gere-o com `openssl rand -base64 32`); os valores usados nas chaves são HMACs, não IPs, e-mails, sessões ou state em claro. Se Redis estiver indisponível, as requisições limitadas falham fechadas com `503` e `Retry-After: 5`. Os perfis `local` e `test` usam armazenamento em memória, sem garantia entre reinícios ou instâncias, portanto não devem ser usados como mecanismo de produção distribuído.
 
-O servidor usa `getRemoteAddr()` e ignora `Forwarded`/`X-Forwarded-For` para evitar falsificação pelo cliente. Atrás de proxy, preserve o IP de origem até a aplicação ou configure o rate limiting no gateway confiável; não encaminhe headers fornecidos diretamente pelo cliente como se fossem confiáveis.
+O servidor usa `getRemoteAddr()` por padrão e só lê `X-Forwarded-For` quando o endereço remoto pertence à lista configurada em `TRUSTED_PROXY_IPS` (IPs ou blocos CIDR). Sem proxies confiáveis configurados, cabeçalhos enviados pelo cliente são ignorados para evitar falsificação.
 
-Para validar a configuração de produção contra um banco PostgreSQL de teste vazio e descartável, defina `POSTGRES_TEST_URL`, `POSTGRES_TEST_USERNAME` e `POSTGRES_TEST_PASSWORD` e execute `mvn -Dtest=PostgreSqlProfileIntegrationTest test`. Esse teste sobe o perfil `prod`, aplica as migrations, confirma a conexão e `ddl-auto=validate`, e exercita persistência/consulta de usuário, autorização LinkedIn e consumo de transação OAuth. Não aponte essas variáveis para um banco de produção: o teste grava dados. Sem `POSTGRES_TEST_URL`, o teste é ignorado e a suíte normal continua usando SQLite.
-
-Para exercitar o armazenamento distribuído, configure `RATE_LIMIT_REDIS_TEST_URL` para um Redis de teste descartável e execute `mvn -Dtest=RedisRateLimitStoreIntegrationTest test`. Sem essa variável, esses testes de integração são ignorados.
+O `pom.xml` declara apenas os drivers e módulos Flyway efetivamente suportados (`sqlite-jdbc` para `local`/`test` e `ojdbc11` + `flyway-database-oracle` para `prod`). O teste `ProdProfileOracleRedisIntegrationTest` sobe contêineres descartáveis do Oracle Free (`gvenzl/oracle-free:23-slim-faststart`) e do Redis (`redis:7.4-alpine`) via Testcontainers para validar migrations Oracle, `ddl-auto=validate`, unicidade case-insensitive de e-mail, fluxo de publicação idempotente e gravação de chaves de rate limit no Redis. Quando o ambiente não possui Docker ativo, esse teste é ignorado automaticamente (`disabledWithoutDocker = true`).
 
 ### Autenticação local
-
-- `GET /api/v1/auth/csrf` retorna o header e o token CSRF necessários às requisições que alteram estado.
-- `POST /api/v1/auth/register` cria uma conta com `email`, `displayName` e senha (mínimo de 12 caracteres).
-- `POST /api/v1/auth/login` recebe `email` e `password`, cria uma sessão HTTP e retorna o usuário autenticado.
-- `GET /api/v1/users/me` retorna a conta associada à sessão atual.
-- `POST /api/v1/auth/logout` encerra a sessão.
 
 O cliente deve guardar o cookie de sessão com segurança e enviar o token CSRF no header indicado pela rota `/csrf`; tokens de senha nunca são devolvidos pela API. Em produção, a aplicação deve ser publicada exclusivamente por HTTPS.
 
 ### Conexão com o LinkedIn
 
-- `GET /api/v1/linkedin/oauth/start` inicia a autorização e redireciona ao LinkedIn; exige sessão local e configuração OAuth/chave de cifragem válidas.
-- `GET /api/v1/linkedin/oauth/callback` recebe o retorno público do LinkedIn, protegido por `state` de uso único, e devolve JSON sem tokens.
-- `GET /api/v1/linkedin/connection` consulta o estado sanitizado da conexão do usuário autenticado.
-- `DELETE /api/v1/linkedin/connection` desconecta localmente; exige sessão e token CSRF.
+No perfil `local`, a ausência de `TOKEN_ENCRYPTION_KEY` não impede a aplicação de iniciar; a chave é validada ao iniciar o OAuth e a operação retorna erro controlado se estiver ausente ou inválida. Configure uma chave Base64 que decodifique para exatamente 32 bytes antes de conectar o LinkedIn. O valor nunca deve ser registrado ou versionado.
 
-O callback está configurado como `http://localhost:8080/api/v1/linkedin/oauth/callback` apenas para desenvolvimento local. Em produção, configure a URI HTTPS exata também no Developer Portal. Os scopes padrão são `openid profile w_member_social`; os scopes efetivamente concedidos dependem dos produtos habilitados no app. Nenhum teste automatizado chama o LinkedIn real. A desconexão remove credenciais locais, mas não afirma revogação remota.
+O callback está configurado como `http://localhost:8080/api/v1/linkedin/oauth/callback` apenas para desenvolvimento local. Em produção, configure a URI HTTPS exata também no Developer Portal. Os scopes padrão são `openid profile w_member_social`; os scopes efetivamente concedidos dependem dos produtos habilitados no app. O `state` OAuth é consumido antes da troca do código e das chamadas externas; se troca, UserInfo, cifragem ou persistência falhar, será necessário iniciar uma nova autorização, pois o callback não pode ser repetido. Nenhum teste automatizado chama o LinkedIn real. A desconexão remove credenciais locais, mas não afirma revogação remota.
 
-## Limitações conhecidas (v1)
+`CORS_ALLOWED_ORIGINS` aceita uma lista separada por vírgulas de origens HTTP/HTTPS exatas; espaços em torno de cada origem são ignorados e entradas vazias são descartadas. URLs com caminho, credenciais, query, fragmento ou wildcard são inválidas. Como as sessões usam credenciais, não configure `*`.
 
-- Sem refresh token presumido — depende do que o LinkedIn efetivamente conceder para o app registrado
-- Sem agendamento nativo no LinkedIn — se existir agendamento, é responsabilidade da aplicação
-- Vagas são só um registro local; não há integração automatizada de busca/candidatura
-- O perfil PostgreSQL de produção está configurado; antes do deploy, valide as migrations e o schema em um PostgreSQL de teste compatível com a versão do serviço.
+## Limitações atuais
+
+- Oportunidades ainda não têm endpoints funcionais.
+- Não há refresh token presumido — depende do que o LinkedIn efetivamente conceder para o app registrado.
+- Falhas conhecidas são registradas como `FAILED`; resultados ambíguos ficam em `OUTCOME_UNKNOWN` ou permanecem `PUBLISHING` após interrupção. Ambos bloqueiam novo envio até reconciliação manual conforme [`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md); não existe retry automático nem endpoint de reconciliação.
+- O teste de integração `ProdProfileOracleRedisIntegrationTest` exige Docker ativo para iniciar os contêineres Oracle Free e Redis via Testcontainers (executa automaticamente no GitHub Actions).
 
 ## Contribuindo
 

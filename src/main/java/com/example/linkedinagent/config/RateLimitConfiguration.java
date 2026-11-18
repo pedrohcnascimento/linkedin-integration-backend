@@ -1,8 +1,8 @@
 package com.example.linkedinagent.config;
 
-import com.example.linkedinagent.adapter.out.ratelimit.InMemoryRateLimitStore;
-import com.example.linkedinagent.adapter.out.ratelimit.RedisRateLimitStore;
-import com.example.linkedinagent.application.ratelimit.RateLimitStore;
+import com.example.linkedinagent.repository.InMemoryRateLimitStore;
+import com.example.linkedinagent.repository.RateLimitStore;
+import com.example.linkedinagent.repository.RedisRateLimitStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,13 +14,13 @@ import java.time.Clock;
 @Configuration
 public class RateLimitConfiguration {
 
-    @Bean
+    @Bean(name = "rateLimitStore")
     @Profile("!prod")
     RateLimitStore inMemoryRateLimitStore(Clock clock) {
         return new InMemoryRateLimitStore(clock);
     }
 
-    @Bean
+    @Bean(name = "rateLimitStore")
     @Profile("prod")
     RateLimitStore redisRateLimitStore(
             StringRedisTemplate redisTemplate,

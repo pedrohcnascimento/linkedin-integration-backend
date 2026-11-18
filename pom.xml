@@ -7,9 +7,9 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <!-- 4.1.0 é a versão GA confirmada em 10/06/2026. Se já existir um patch mais
+        <!-- 4.1.2 é a versão GA confirmada em 10/06/2026. Se já existir um patch mais
              novo (4.1.1, 4.1.2...) quando você buildar, sinta-se livre para atualizar. -->
-        <version>4.1.0</version>
+        <version>4.1.2</version>
         <relativePath/>
     </parent>
 
@@ -70,20 +70,21 @@
         <dependency>
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
-            <version>3.53.2.0</version>
+            <version>3.54.1.0</version>
         </dependency>
 
-        <!-- Driver JDBC do PostgreSQL para o perfil prod; a versão é gerenciada pelo Spring Boot. -->
+        <!-- Driver JDBC Oracle usado pelo perfil prod. -->
         <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
+            <groupId>com.oracle.database.jdbc</groupId>
+            <artifactId>ojdbc11</artifactId>
+            <version>23.26.4.0.0</version>
             <scope>runtime</scope>
         </dependency>
 
         <!-- Flyway separa o suporte a bancos por módulos desde a versão 10. -->
         <dependency>
             <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-database-postgresql</artifactId>
+            <artifactId>flyway-database-oracle</artifactId>
             <scope>runtime</scope>
         </dependency>
 
@@ -100,7 +101,7 @@
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-            <version>3.0.3</version>
+            <version>3.2.0</version>
         </dependency>
 
         <!-- Testes -->
@@ -114,10 +115,22 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Testcontainers: valida o perfil prod contra Oracle e Redis reais e descartáveis.
+             Versões gerenciadas pelo Spring Boot. Os testes são ignorados quando não há Docker. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-oracle-free</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>me.paulschwarz</groupId>
             <artifactId>spring-dotenv</artifactId>
-            <version>4.0.0</version>
+            <version>5.1.0</version>
         </dependency>
     </dependencies>
 

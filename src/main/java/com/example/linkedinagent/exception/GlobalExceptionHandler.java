@@ -1,0 +1,164 @@
+package com.example.linkedinagent.exception;
+
+import com.example.linkedinagent.dto.ApiError;
+import com.example.linkedinagent.security.RequestCorrelationFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.ErrorResponse;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+
+import java.util.Arrays;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final long STORE_RETRY_AFTER_SECONDS = 5;
+    private static final Pattern SENSITIVE_LOG_PATTERN = Pattern.compile(
+            "(?i)(jdbc:[^\\s,;]+|(?:password|secret|token|authorization|key)\\s*[:=]\\s*[^\\s,;]+)");
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ApiError> handleLimitExceeded(RateLimitExceededException exception) {
+        long retryAfterSeconds = Math.max(1, (long) Math.ceil(exception.getRetryAfter().toMillis() / 1000.0));
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds))
+                .body(new ApiError("RATE_LIMITED", "Too many requests. Please retry later."));
+    }
+
+    @ExceptionHandler(RateLimitStoreUnavailableException.class)
+    public ResponseEntity<ApiError> handleStoreUnavailable(RateLimitStoreUnavailableException exception) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(STORE_RETRY_AFTER_SECONDS))
+                .body(new ApiError("RATE_LIMIT_UNAVAILABLE", "Requests are temporarily unavailable."));
+    }
+
+    @ExceptionHandler(EmailAlreadyRegisteredException.class)
+    public ResponseEntity<ApiError> handleEmailAlreadyRegistered(EmailAlreadyRegisteredException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiError("EMAIL_ALREADY_REGISTERED", "An account with this email already exists."));
+    }
+
+    @ExceptionHandler(PasswordTooLongException.class)
+    public ResponseEntity<ApiError> handlePasswordTooLong(PasswordTooLongException exception) {
+        return ResponseEntity.badRequest()
+                .body(new ApiError("PASSWORD_TOO_LONG", "Password exceeds the supported UTF-8 byte length."));
+    }
+
+    @ExceptionHandler(LinkedInOAuthException.class)
+    public ResponseEntity<ApiError> handleOAuthError(LinkedInOAuthException exception) {
+        return ResponseEntity.badRequest()
+                .body(new ApiError("LINKEDIN_AUTHORIZATION_FAILED", exception.getMessage()));
+    }
+
+    @ExceptionHandler(LinkedInProviderException.class)
+    public ResponseEntity<ApiError> handleProviderError(LinkedInProviderException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ApiError("LINKEDIN_PROVIDER_ERROR", "LinkedIn provider request failed."));
+    }
+
+    @ExceptionHandler(TokenEncryptionException.class)
+    public ResponseEntity<ApiError> handleEncryptionError(TokenEncryptionException exception) {
+        return ResponseEntity.internalServerError()
+                .body(new ApiError("LINKEDIN_CREDENTIAL_STORAGE_ERROR",
+                        "LinkedIn credentials could not be stored securely."));
+    }
+
+    @ExceptionHandler(LinkedInOAuthConfigurationException.class)
+    public ResponseEntity<ApiError> handleConfigurationError(LinkedInOAuthConfigurationException exception) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ApiError("LINKEDIN_OAUTH_NOT_CONFIGURED",
+                        "LinkedIn authorization is not configured."));
+    }
+
+    @ExceptionHandler(DraftWorkflowException.class)
+    public ResponseEntity<ApiError> handleWorkflow(DraftWorkflowException exception) {
+        return ResponseEntity.status(exception.getStatus())
+                .body(new ApiError(exception.getCode(), exception.getMessage()));
+    }
+
+    @ExceptionHandler(LinkedInPublishingException.class)
+    public ResponseEntity<ApiError> handleLinkedInPublishing(LinkedInPublishingException exception) {
+        if (exception.isOutcomeUnknown()) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body(new ApiError("LINKEDIN_RESULT_UNKNOWN",
+                            "LinkedIn may have accepted the publication; reconcile it before retrying."));
+        }
+        HttpStatus status = "LINKEDIN_RATE_LIMITED".equals(exception.getFailureCode())
+                ? HttpStatus.TOO_MANY_REQUESTS
+                : HttpStatus.BAD_GATEWAY;
+        return ResponseEntity.status(status)
+                .body(new ApiError(exception.getFailureCode(), "LinkedIn publication failed."));
+    }
+
+    @ExceptionHandler(RequestCorrelationFilter.PayloadTooLargeInputStreamException.class)
+    public ResponseEntity<ApiError> handlePayloadTooLarge(
+            RequestCorrelationFilter.PayloadTooLargeInputStreamException exception) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new ApiError("PAYLOAD_TOO_LARGE", "Request body exceeds the maximum allowed size."));
+    }
+
+    @ExceptionHandler({
+            MethodArgumentNotValidException.class,
+            HttpMessageNotReadableException.class,
+            MethodArgumentTypeMismatchException.class
+    })
+    public ResponseEntity<ApiError> handleInvalidRequest(Exception exception) {
+        if (hasCause(exception, RequestCorrelationFilter.PayloadTooLargeInputStreamException.class)) {
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                    .body(new ApiError("PAYLOAD_TOO_LARGE", "Request body exceeds the maximum allowed size."));
+        }
+        return ResponseEntity.badRequest()
+                .body(new ApiError("INVALID_REQUEST", "Request validation failed."));
+    }
+
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<ApiError> handleUnexpectedRuntimeException(RuntimeException exception) {
+        if (exception instanceof ErrorResponse
+                || exception instanceof AccessDeniedException
+                || exception instanceof AuthenticationException) {
+            throw exception;
+        }
+        if (hasCause(exception, RequestCorrelationFilter.PayloadTooLargeInputStreamException.class)) {
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                    .body(new ApiError("PAYLOAD_TOO_LARGE", "Request body exceeds the maximum allowed size."));
+        }
+        String sanitizedMessage = sanitizeLogMessage(exception.getMessage());
+        String stackSummary = Arrays.stream(exception.getStackTrace())
+                .limit(20)
+                .map(StackTraceElement::toString)
+                .collect(Collectors.joining("\n\tat "));
+        log.error("Unhandled runtime exception ({}): {}\n\tat {}",
+                exception.getClass().getName(), sanitizedMessage, stackSummary);
+        return ResponseEntity.internalServerError()
+                .body(new ApiError("INTERNAL_ERROR", "An unexpected error occurred."));
+    }
+
+    static String sanitizeLogMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return "<no-message>";
+        }
+        return SENSITIVE_LOG_PATTERN.matcher(message).replaceAll("[REDACTED]");
+    }
+
+    private static boolean hasCause(Throwable throwable, Class<? extends Throwable> target) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (target.isInstance(current)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+}

@@ -1,5 +1,7 @@
 # STEP-01 — Criar o repositório e o contrato de trabalho
 
+> **Registro histórico da etapa.** Este relatório preserva o estado e as pendências observadas quando foi escrito; não representa o status atual do projeto. A confirmação do titular da licença MIT registrada abaixo como pendente foi resolvida: consulte [`docs/status-atual.md`](../status-atual.md) e `LICENSE`.
+
 **Objetivo:** estabelecer um repositório reproduzível e regras para futuras contribuições humanas e automatizadas, sem gerar código de domínio.
 
 ## Decisões tomadas (confirmadas com o proprietário)

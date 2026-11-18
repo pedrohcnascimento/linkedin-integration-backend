@@ -1,5 +1,7 @@
 # Plano do Passo 8 — Ciclo OAuth com o LinkedIn
 
+> **Plano e decisões da etapa concluída.** Documento histórico do planejamento e execução do Passo 8; o resumo vigente está em [`docs/status-atual.md`](../status-atual.md). Decisões atuais sobre a API do LinkedIn constam na [matriz de capacidades](../linkedin-capability-matrix.md).
+
 **Status:** implementado e validado localmente; a configuração real do app no Developer Portal e o smoke test externo continuam pendentes.
 **Escopo:** conectar e desconectar uma conta LinkedIn do usuário local autenticado, sem iniciar publicação ou qualquer outra funcionalidade de negócio.
 

@@ -32,6 +32,8 @@ public class AppProperties {
         private String clientSecret;
         private String redirectUri;
         private String scopes = "openid profile w_member_social";
+        private String apiBaseUrl = "https://api.linkedin.com";
+        private String apiVersion = "202609";
 
         public String getClientId() {
             return clientId;
@@ -64,11 +66,29 @@ public class AppProperties {
         public void setScopes(String scopes) {
             this.scopes = scopes;
         }
+
+        public String getApiBaseUrl() {
+            return apiBaseUrl;
+        }
+
+        public void setApiBaseUrl(String apiBaseUrl) {
+            this.apiBaseUrl = apiBaseUrl;
+        }
+
+        public String getApiVersion() {
+            return apiVersion;
+        }
+
+        public void setApiVersion(String apiVersion) {
+            this.apiVersion = apiVersion;
+        }
     }
 
     public static class Security {
         private String tokenEncryptionKey;
+        private String tokenEncryptionKeyId = "k1";
         private String corsAllowedOrigins;
+        private String trustedProxyIps = "";
 
         public String getTokenEncryptionKey() {
             return tokenEncryptionKey;
@@ -78,12 +98,28 @@ public class AppProperties {
             this.tokenEncryptionKey = tokenEncryptionKey;
         }
 
+        public String getTokenEncryptionKeyId() {
+            return tokenEncryptionKeyId;
+        }
+
+        public void setTokenEncryptionKeyId(String tokenEncryptionKeyId) {
+            this.tokenEncryptionKeyId = tokenEncryptionKeyId;
+        }
+
         public String getCorsAllowedOrigins() {
             return corsAllowedOrigins;
         }
 
         public void setCorsAllowedOrigins(String corsAllowedOrigins) {
             this.corsAllowedOrigins = corsAllowedOrigins;
+        }
+
+        public String getTrustedProxyIps() {
+            return trustedProxyIps;
+        }
+
+        public void setTrustedProxyIps(String trustedProxyIps) {
+            this.trustedProxyIps = trustedProxyIps;
         }
     }
 }

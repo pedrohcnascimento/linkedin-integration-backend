@@ -1,0 +1,47 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: linkedin-integration-backend:0.1.0
+    container_name: linkedin-integration-backend
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+    volumes:
+      - sqlite_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+
+  # Redis opcional, apenas para experimentar o RedisRateLimitStore localmente.
+  # ATENÇÃO: o serviço "app" roda com o perfil local por padrão, que usa InMemoryRateLimitStore
+  # e NÃO se conecta a este Redis. Somente o perfil prod usa Redis (via RATE_LIMIT_REDIS_URL),
+  # e o perfil prod também exige Oracle. Em produção (Render), use um Redis gerenciado com
+  # autenticação e TLS (rediss://usuario:senha@host:porta).
+  redis:
+    image: redis:7.4-alpine
+    container_name: linkedin-integration-redis
+    profiles:
+      - redis-local
+    # Publica a porta apenas na interface de loopback do host: o Redis não fica exposto
+    # na rede local/pública. O container "app" acessa pela rede interna do Compose (redis:6379).
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  sqlite_data:

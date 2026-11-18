@@ -5,12 +5,28 @@ server:
         http-only: true
         same-site: lax
 
+management:
+  health:
+    redis:
+      enabled: false
+
 spring:
   datasource:
-    # Default database URL for local environment
-    url: ${DATABASE_URL:jdbc:sqlite:./data/linkedinagent-local.db}
+    # O perfil local sempre usa SQLite; DATABASE_URL fica reservado ao perfil prod.
+    url: jdbc:sqlite:./data/linkedinagent-local.db
     hikari:
       connection-init-sql: PRAGMA foreign_keys=ON
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    csrf:
+      enabled: true
+      cookie-name: XSRF-TOKEN
+      header-name: X-XSRF-TOKEN
+
 app:
   linkedin:
     # Em local, os segredos podem estar vazios por padrao para não quebrar o startup 
@@ -19,9 +35,12 @@ app:
     client-secret: ${LINKEDIN_CLIENT_SECRET:}
     redirect-uri: ${LINKEDIN_REDIRECT_URI:http://localhost:8080/api/v1/linkedin/oauth/callback}
     scopes: ${LINKEDIN_SCOPES:openid profile w_member_social}
+    api-base-url: ${LINKEDIN_API_BASE_URL:https://api.linkedin.com}
+    api-version: ${LINKEDIN_API_VERSION:202609}
   security:
     token-encryption-key: ${TOKEN_ENCRYPTION_KEY:}
     cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+    trusted-proxy-ips: ${TRUSTED_PROXY_IPS:}
   rate-limit:
     hmac-key: ${RATE_LIMIT_HMAC_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
   base-url: ${APP_BASE_URL:http://localhost:8080}

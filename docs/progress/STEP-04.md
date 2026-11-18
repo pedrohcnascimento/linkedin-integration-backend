@@ -1,5 +1,7 @@
 # STEP-04 — Gerar o esqueleto Spring Boot
 
+> **Registro histórico da etapa.** Este relatório preserva o estado e as pendências observadas quando foi escrito; não representa o status atual do projeto. Consulte [`docs/status-atual.md`](../status-atual.md) para validações ainda abertas.
+
 **Objetivo:** base compilável e pequena — aplicação que inicia, health check, build configurado, teste de contexto. Sem entidades JPA vazias, sem lógica de integração em controllers.
 
 ## Decisão de versão (pesquisa realizada nesta etapa)

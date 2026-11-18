@@ -1,10 +1,10 @@
 # Planejamento técnico — Backend para integração autorizada com o LinkedIn
 
 **Versão:** 1.0 — planejamento inicial
-**Status:** documento de arquitetura e roteiro; o estado implementado e os próximos critérios estão registrados em `docs/progress/`.
+**Status:** documento de arquitetura e roteiro; o estado implementado e as pendências vigentes estão em [`docs/status-atual.md`](status-atual.md). Os relatórios em `docs/progress/` são históricos.
 **Tecnologias obrigatórias:** Java 21, Spring Boot, Spring Web, Spring Security quando necessário, Maven, SQLite, JPA/Hibernate, JDBC subjacente, APIs RESTful, OAuth 2.0 e Docker quando aplicável.
 
-> Este arquivo é a fonte de verdade **arquitetural** do projeto. Qualquer pessoa ou agente de IA que for alterar o repositório deve lê-lo por completo antes de programar.
+> Este arquivo é a referência de arquitetura e requisitos planejados. Qualquer pessoa ou agente de IA que for alterar o repositório deve lê-lo por completo antes de programar. Para a precedência entre documentação, consulte [`docs/status-atual.md`](status-atual.md).
 >
 > **Atualização de 22/09/2026 (Passo 2 do roteiro):** o endpoint de publicação citado na seção 3.1 (`POST /v2/ugcPosts`) é uma API legada desde 30/06/2023. Após validação com a documentação oficial atual, o projeto adota a **Posts API** (`POST /rest/posts`) no lugar. Ver decisão registrada e detalhes completos em [`docs/linkedin-capability-matrix.md`](linkedin-capability-matrix.md) — esse arquivo é a fonte de verdade **factual/atualizável** sobre a API do LinkedIn e prevalece sobre este documento sempre que houver conflito.
 
@@ -77,69 +77,46 @@ Fluxo permitido: coletar de fonte autorizada → filtrar localmente → apresent
 
 ## 4. Arquitetura proposta
 
+> **Atualização arquitetural (30/10/2026):** a árvore inicial `application/ports` + `adapter/in|out` + `shared` acumulou pacotes vazios e duplicação entre portas e repositórios JPA. O código-fonte foi consolidado em uma arquitetura em camadas orientada a **Domain-Driven Design (DDD)** (seguindo o padrão de referência `ChallengeEcopulseMaven`), eliminando todos os pacotes vazios e mantendo fronteiras explícitas entre contratos REST (`dto` + `resource`), serviços de aplicação (`service`), modelo rico de domínio (`domain`), persistência/stores (`repository`), clientes HTTP externos (`client`), segurança/cifragem (`security`), exceções centralizadas (`exception`) e configuração (`config`).
+
 ### 4.1 Princípios
 
-Separação de responsabilidades, baixo acoplamento, alta coesão, SOLID, Clean Code e DDD onde reduzir complexidade. O domínio não deve conhecer classes de resposta do LinkedIn, entidades JPA ou detalhes de HTTP.
+Separação clara de responsabilidades, baixo acoplamento, alta coesão, SOLID, Clean Code e Domain-Driven Design (DDD). Os contratos JSON externos do LinkedIn permanecem encapsulados em `client`, e os payloads HTTP da API própria permanecem em `dto`.
 
-Quatro áreas:
-1. **Domínio:** regras, entidades de negócio, objetos de valor e portas
-2. **Aplicação:** casos de uso, transações e orquestração
-3. **Adaptadores de entrada:** controllers REST, autenticação e validação de requests
-4. **Adaptadores de saída:** JPA, cliente HTTP do LinkedIn, armazenamento de segredos e observabilidade
+Responsabilidades por camada:
+1. **Domínio (`domain`):** entidades de negócio (`AppUser`, `LinkedInAuthorization`, `OAuthTransaction`, `ContentDraft`, `Publication`, `AuditEvent`, `Opportunity`) e objetos de valor (`LinkedInConnection`, `LinkedInPublicationCommand`, `PublicationResult`, `RateLimitBucket`), concentrando constantes de estado, invariantes e transições válidas.
+2. **Serviços de aplicação (`service`):** casos de uso, controle transacional e orquestração (`RegistrationService`, `LinkedInOAuthService`, `DraftWorkflowService`, `RateLimitService`).
+3. **Recursos REST e DTOs (`resource`, `dto`, `exception`):** controllers REST finos (`AuthResource`, `LinkedInOAuthResource`, `DraftResource`), records de request/response com Bean Validation/OpenAPI (`AuthDtos`, `LinkedInOAuthDtos`, `DraftDtos`, `PublicationDtos`, `ApiError`) e mapeamento uniforme de erros em `GlobalExceptionHandler`.
+4. **Infraestrutura e integrações (`repository`, `client`, `security`, `config`):** repositórios JPA e stores de rate limit (`InMemoryRateLimitStore`, `RedisRateLimitStore`), clientes HTTP oficiais do LinkedIn (`LinkedInOAuthClient`/`LinkedInOAuthHttpClient`, `LinkedInPublishingClient`/`LinkedInPublishingHttpClient`), cifragem de tokens (`TokenCipher`/`AesGcmTokenCipher`), autenticação de sessão e beans Spring.
 
-### 4.2 Estrutura de pacotes
+### 4.2 Estrutura de pacotes vigente
 
 ```
 com.example.linkedinagent
-├── domain
-│   ├── user
-│   ├── linkedin
-│   ├── publishing
-│   ├── opportunity
-│   └── common
-├── application
-│   ├── auth
-│   ├── publishing
-│   ├── opportunity
-│   └── ports
-│       ├── in
-│       └── out
-├── adapter
-│   ├── in
-│   │   └── web
-│   └── out
-│       ├── linkedin
-│       ├── persistence
-│       └── security
+├── LinkedinAgentApplication.java
+├── client
+│   ├── LinkedInOAuthClient.java
+│   ├── LinkedInOAuthHttpClient.java
+│   ├── LinkedInPublishingClient.java
+│   └── LinkedInPublishingHttpClient.java
 ├── config
+├── domain
+├── dto
 ├── exception
-└── shared
+├── repository
+├── resource
+├── security
+└── service
 ```
 
-Alternativa mais simples para o primeiro commit: organizar por feature, mantendo `domain`, `application` e `adapter` dentro de cada feature. Regra essencial: **os DTOs externos do LinkedIn ficam dentro do adaptador `linkedin` e nunca atravessam a fronteira do caso de uso.**
+Regra essencial mantida: **os DTOs JSON externos do LinkedIn ficam restritos às implementações em `client` e nunca atravessam a fronteira para `service`, `domain` ou `resource`.**
 
-### 4.3 Portas e adaptadores
+### 4.3 Fronteiras de integração e persistência
 
-**Portas de entrada:**
-- `StartLinkedInAuthorizationUseCase`
-- `CompleteLinkedInAuthorizationUseCase`
-- `CreateDraftUseCase`
-- `ApproveDraftUseCase`
-- `PublishApprovedDraftUseCase`
-- `ListPublicationHistoryUseCase`
-- `RegisterOpportunityUseCase`
-
-**Portas de saída:**
-- `LinkedInAuthorizationPort`
-- `LinkedInProfilePort`
-- `LinkedInPublishingPort`
-- `AccessTokenRepository`
-- `UserRepository`
-- `DraftRepository`
-- `PublicationRepository`
-- `ClockPort` (para testes determinísticos)
-
-A implementação HTTP do LinkedIn deve converter respostas externas em modelos internos. O domínio trabalha com `LinkedInPublicationCommand` e `PublicationResult` — nunca com `com.linkedin.ugc.ShareContent` ou mapas JSON crus.
+- **Clientes externos (`client`):** `LinkedInOAuthClient` e `LinkedInPublishingClient` expõem contratos orientados ao domínio (`LinkedInPublicationCommand`, `PublicationResult`), isolando headers Rest.li, códigos HTTP do LinkedIn e serialização externa em `LinkedInOAuthHttpClient` e `LinkedInPublishingHttpClient`.
+- **Segurança (`security`):** `TokenCipher` (`AesGcmTokenCipher`) protege tokens em repouso; `AppUserPrincipal`, `AppUserDetailsService` e `RateLimitInterceptor` isolam autenticação local e proteção de borda.
+- **Persistência e rate limit (`repository`):** repositórios Spring Data JPA operam diretamente sobre as entidades de `domain`, enquanto `RateLimitStore` abstrai `InMemoryRateLimitStore` (`!prod`) e `RedisRateLimitStore` (`prod`).
+- **Determinismo temporal (`config`):** `Clock` injetável permite testes determinísticos de expiração de `state`, tokens e timestamps de auditoria/publicação.
 
 ## 5. Fluxo OAuth 2.0
 
@@ -231,7 +208,9 @@ Versionada desde o início com prefixo `/api/v1`.
 
 ### 7.1 Endpoints iniciais
 
-| Método e rota | Finalidade | Autenticação | Resposta principal |
+Esta tabela mistura rotas implementadas com destinos planejados; ela não é um inventário completo do contrato atual. Atualmente há criação/listagem/edição de draft, aprovação e publicação textual, além de histórico paginado. A consulta individual e oportunidades abaixo permanecem planejadas e não devem ser usados como se estivessem disponíveis.
+
+| Método e rota | Finalidade | Autenticação | Resposta principal / estado |
 |---|---|---|---|
 | `GET /api/v1/linkedin/oauth/start` | Iniciar OAuth | Usuário local | `302` para o LinkedIn |
 | `GET /api/v1/linkedin/oauth/callback` | Processar callback | `state` válido | `302` ou resposta de conclusão |
@@ -239,14 +218,14 @@ Versionada desde o início com prefixo `/api/v1`.
 | `DELETE /api/v1/linkedin/connection` | Revogar conexão local | Usuário local | `204` |
 | `POST /api/v1/drafts` | Criar rascunho | Usuário local | `201` |
 | `GET /api/v1/drafts` | Listar rascunhos paginados | Usuário local | `200` |
-| `GET /api/v1/drafts/{id}` | Consultar rascunho | Usuário local | `200` |
+| `GET /api/v1/drafts/{id}` | Consultar rascunho | Usuário local | Planejado; não implementado |
 | `PATCH /api/v1/drafts/{id}` | Editar rascunho | Usuário local | `200` |
 | `POST /api/v1/drafts/{id}/approve` | Aprovar publicação | Usuário local | `200` |
-| `POST /api/v1/drafts/{id}/publish` | Publicar rascunho aprovado | Usuário local | `202` ou `201` |
-| `GET /api/v1/publications` | Histórico de publicações | Usuário local | `200` |
-| `POST /api/v1/opportunities` | Registrar oportunidade local | Usuário local | `201` |
-| `GET /api/v1/opportunities` | Filtrar oportunidades próprias | Usuário local | `200` |
-| `PATCH /api/v1/opportunities/{id}` | Atualizar status local | Usuário local | `200` |
+| `POST /api/v1/drafts/{id}/publish` | Publicar rascunho aprovado | Usuário local | Implementado; `201` inclusive no replay concluído |
+| `GET /api/v1/publications` | Histórico de publicações | Usuário local | Implementado; página de 0 a 50, somente do proprietário |
+| `POST /api/v1/opportunities` | Registrar oportunidade local | Usuário local | Planejado; não implementado |
+| `GET /api/v1/opportunities` | Filtrar oportunidades próprias | Usuário local | Planejado; não implementado |
+| `PATCH /api/v1/opportunities/{id}` | Atualizar status local | Usuário local | Planejado; não implementado |
 | `GET /actuator/health` | Health check | Conforme exposição configurada | `200` ou `503` |
 
 O endpoint de publicação deve verificar propriedade do rascunho, status `APPROVED`, existência de autorização ativa e ausência de publicação anterior com a mesma impressão digital de requisição. Exigir cabeçalho de idempotência (`Idempotency-Key`) para evitar duplicação em retries.
@@ -291,21 +270,18 @@ Usuário deve conseguir desconectar o LinkedIn — apagando/inutilizando tokens,
 
 Banco com controle de acesso por usuário, backups cifrados. Documentar quais dados vêm do LinkedIn, quais são criados pelo usuário e quais são derivados. Acesso interno aos tokens restrito ao adaptador de integração.
 
-## 12. Persistência PostgreSQL em produção
+## 12. Persistência local e perfil de produção
 
-O perfil `prod` usa o driver JDBC PostgreSQL gerenciado pelo Spring Boot, configura o dialeto PostgreSQL e mantém `ddl-auto=validate`. O perfil local continua usando SQLite. As migrations Flyway V1/V2 usam tipos portáveis (`TEXT`, `INTEGER`) e são aplicadas na inicialização; o Hibernate valida o mapeamento das entidades contra o schema já migrado.
+O perfil `local` usa SQLite. O `application-prod.yml` atual seleciona Oracle, usa `OracleDialect`, migration Flyway em `db/migration/oracle` e `ddl-auto=validate`. O Maven também declara driver e módulo Flyway para PostgreSQL, mas isso não configura PostgreSQL como perfil de produção: não há migration PostgreSQL nem `PostgreSqlProfileIntegrationTest` no código atual. A configuração Oracle tampouco tem teste de integração Oracle no repositório.
 
-Antes de um deploy:
+Antes de considerar qualquer banco pronto para produção:
 
-1. Fornecer `DATABASE_URL` no formato `jdbc:postgresql://<host>:<porta>/<banco>` e `DATABASE_USERNAME`/`DATABASE_PASSWORD` por secret manager ou configuração do serviço; configurar TLS conforme o provedor.
-2. Usar uma conta com permissões de migration na inicialização e manter o histórico Flyway acessível.
-3. Em um PostgreSQL de teste vazio e descartável, executar `mvn -Dtest=PostgreSqlProfileIntegrationTest test`. O teste inicia com perfil `prod`, aplica V1/V2, verifica conexão e validação Hibernate e executa operações de repositório para usuário, autorização LinkedIn, UUID, timestamps e consumo de transação.
-4. Executar a suíte geral `mvn clean test`; ela permanece isolada em SQLite e não acessa serviços externos.
-5. Só então promover a mesma configuração de schema para produção. Não execute o teste de integração em banco produtivo: ele grava dados.
+1. Confirmar qual banco é o destino aprovado; hoje a configuração `prod` aponta para Oracle, mas a dependência PostgreSQL e o planejamento histórico de migração criam ambiguidade.
+2. Em banco descartável da mesma tecnologia e versão compatível com o destino, testar migration em banco vazio, validação Hibernate e operações JPA de usuário, autorização, OAuth e publicação.
+3. Verificar constraints, transações e concorrência da idempotência, pois a implementação não pode assumir o comportamento do SQLite como prova de compatibilidade com Oracle ou PostgreSQL.
+4. Manter credenciais fora do repositório e aplicar migrations somente com conta autorizada e plano de rollback/recuperação adequado.
 
-Sem `POSTGRES_TEST_URL`, `POSTGRES_TEST_USERNAME` e `POSTGRES_TEST_PASSWORD`, o teste PostgreSQL é ignorado. O teste automatizado verifica operações JPA atuais (usuário e transação OAuth); tabelas de publicação/oportunidade não têm casos de uso implementados nesta etapa e não há queries de negócio dessas funcionalidades a validar ainda.
-
-Entidades, serviços, controllers, portas e regras de negócio não deveriam depender do banco concreto. Qualquer evolução nas migrations deve continuar compatível com SQLite e PostgreSQL ou declarar scripts separados por banco, acompanhados por testes nos dois perfis.
+Se o destino escolhido for PostgreSQL, isso exige alinhar configuração, dialeto, migrations e testes antes de declarar suporte; as dependências Maven sozinhas não são evidência. Não executar testes que gravam dados em banco produtivo.
 
 ## 13. Configuração por ambiente
 
@@ -335,12 +311,12 @@ CORS_ALLOWED_ORIGINS
 | 4 — Persistência SQLite | Driver JDBC, JPA/Hibernate, migrations, entidades iniciais | Testes de persistência passam em SQLite real |
 | 5 — Identidade e OAuth | Usuário local, state único, callback, token cifrado, desconexão | Testes de sucesso/expiração/replay/erro passam |
 | 6 — Adaptador LinkedIn | Cliente HTTP isolado e mapeadores para Share API | Testes simulados cobrem sucesso e falha |
-| 7 — Rascunhos e publicação | Estados, aprovação, idempotência, histórico, retry seguro | Sem publicação duplicada em retry conhecido |
+| 7 — Rascunhos e publicação | Estados, aprovação, idempotência, histórico e falhas | Replay conhecido não duplica publicação; concorrência e recuperação têm testes no banco escolhido |
 | 8 — Oportunidades locais | Registrar/classificar vagas de fontes autorizadas ou manuais | Sistema não precisa da sessão do LinkedIn |
 | 9 — API REST e documentação | Controllers, DTOs, validação, erros, OpenAPI, versionamento | Exemplos do README executam localmente |
 | 10 — Segurança/privacidade/observabilidade | CORS, CSRF, rate limit, logs, auditoria, exclusão, retenção | Sem tokens em logs nem acesso cruzado |
 | 11 — Docker e qualidade de portfólio | Execução padronizada, diagrama, documentação, testes, CI futuro | Clone novo inicia seguindo o README |
-| 12 — Preparação para PostgreSQL | Validar independência do domínio em relação ao banco | Migrations e testes passam nos dois bancos |
+| 12 — Banco de produção | Confirmar destino e validar configuração/migrations na tecnologia escolhida | Teste reprodutível passa no banco de destino além da suíte SQLite |
 
 A ordem reduz retrabalho: valida a plataforma real primeiro, estabiliza a fronteira externa antes das regras de negócio, mantém a persistência substituível.
 
@@ -399,7 +375,7 @@ O agente **não deve avançar automaticamente** quando um teste falhar, uma migr
 **Escopo realizado:** `application.yml` base; perfis local/prod/test; `AppProperties`; `VerifyEnvRunner`; `WebConfig`; carregamento de `.env` com spring-dotenv; `.env.example`; CORS restrito por configuração.
 **Adições benéficas posteriores:** cookies de sessão `HttpOnly` e `SameSite=Lax`, `Secure` em produção, e `PRAGMA foreign_keys=ON` em conexões SQLite local/test foram introduzidos com o Passo 7 e estão registrados como requisitos de ambiente relevantes.
 **Verificação:** teste de binding/contexto com perfil test; revisar que todos os defaults são não secretos; testar CORS com origens permitidas e rejeitadas; validar cookies e ausência de fallback para valores sensíveis no perfil prod.
-**Pendências/limites atuais:** `application-prod.yml` referencia credenciais PostgreSQL, mas o projeto atual só declara driver SQLite; o perfil prod não deve ser considerado pronto para implantação até o Passo 12 e não foi validado por estes testes. O teste usa strings fictícias — incluindo uma chave de cifragem de exemplo que ainda não tem contrato binário validado. Antes do OAuth, definir e validar o formato/tamanho real da chave sem inserir um valor real no Git. Conferir também parsing/trim de múltiplas origens CORS e não tratar a configuração local permissiva como configuração de produção.
+**Pendências/limites registrados à época:** validação do perfil `prod` e teste de banco estavam pendentes. A configuração atual foi alterada desde essa retrospectiva: `application-prod.yml` seleciona Oracle e o Maven declara também dependências PostgreSQL, mas não existe teste de integração Oracle ou PostgreSQL no código atual. Consulte a seção 12 e [`docs/status-atual.md`](status-atual.md); não use esta nota histórica como descrição da configuração vigente.
 
 ### Passo 6 — Criar schema SQLite e migrations
 **Objetivo:** estabelecer persistência reproduzível, schema versionado e mapeamentos JPA compatíveis com SQLite antes das regras de negócio.
@@ -437,22 +413,46 @@ O agente **não deve avançar automaticamente** quando um teste falhar, uma migr
 
 ### Passo 9 — Implementar o adaptador de publicação
 **Objetivo:** encapsular toda comunicação de publicação com o LinkedIn.
+**Estado atual:** adaptador Posts API para publicação textual de membro implementado e integrado ao fluxo do Passo 10. Não inclui artigo, mídia, organizações, leitura de posts ou agendamento. Ver [`docs/progress/STEP-09.md`](progress/STEP-09.md) e a [matriz de capacidades](linkedin-capability-matrix.md).
+**Critério restante:** manter testes simulados para headers, versão configurável, sucesso, resposta sem `x-restli-id`, rate limit e falhas externas; nenhum teste automatizado deve publicar conteúdo real.
 
 ### Passo 10 — Implementar rascunhos, aprovação e idempotência
 **Objetivo:** impedir publicação acidental ou duplicada.
+**Implementado:** `POST /api/v1/drafts`, `GET /api/v1/drafts`, `PATCH /api/v1/drafts/{id}`, aprovação e publicação textual. A propriedade é verificada pela sessão local; só `DRAFT` pode ser editado/aprovado e só `APPROVED` pode ser publicado. A publicação exige conexão ativa e `Idempotency-Key`; replay bem-sucedido devolve o resultado salvo, mantendo o status HTTP atual `201`.
+**Entregue nesta continuação:** `GET /api/v1/publications` fornece histórico paginado por usuário, ordenado por `createdAt` e UUID descendentes. Falhas conhecidas ficam em `FAILED` e o replay da mesma chave retorna conflito, sem nova chamada externa. Colisões de unicidade durante a gravação inicial também retornam `409` antes de chamar o LinkedIn.
+**Plano de conclusão:**
+1. A política definida é bloquear novas tentativas após timeout/resultado externo ambíguo e exigir reconciliação manual; não adicionar retry cego. A reserva `PUBLISHING` é persistida antes da chamada externa e também bloqueia uma segunda chave para o mesmo draft. **Concluído em 30/10/2026** no código e no procedimento operacional [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md).
+2. Oracle foi confirmado como banco-alvo de `prod`; preparar schema descartável e validar migrations, `ddl-auto=validate`, chamadas simultâneas com mesma chave e chaves diferentes. O lock pessimista e a unicidade precisam de demonstração no Oracle; teste com repositório simulado não substitui concorrência real.
+3. Completar a revisão OpenAPI e de schema/respostas, incluindo histórico, limites de paginação, propriedade, `OUTCOME_UNKNOWN`, falhas e replay. **Concluído em 30/10/2026** para publicação e histórico (ver `STEP-10.md`).
+**Critério de conclusão:** política para resultado ambíguo registrada e implementada, concorrência e replay demonstrados por testes Oracle e contrato revisado. A etapa permanece em andamento até cumprir esses critérios.
 
 ### Passo 11 — Adicionar oportunidades locais sem scraping
-**Objetivo:** apoiar busca de vagas sem automatizar o LinkedIn.
+**Status:** **adiado para ciclo futuro** em 30/10/2026 (ver [`docs/progress/STEP-11.md`](progress/STEP-11.md) e [`docs/planejamento-fontes-vagas.md`](planejamento-fontes-vagas.md)). Não será implementado antes da finalização e estabilização da v1 de publicação textual; entidades/migrations preliminares de `opportunity` permanecem dormentes, sem endpoints expostos.
+**Objetivo (quando retomado):** apoiar busca e organização local de vagas sem automatizar o LinkedIn.
+**Plano:** definir campos e ciclo de vida apenas para dados informados/importados de fontes autorizadas; criar casos de uso, migrations específicas para os bancos suportados, endpoints com isolamento por usuário e testes. Não implementar scraping, navegação automatizada ou candidatura.
 
 ### Passo 12 — Finalizar a API REST e o contrato OpenAPI
+**Status:** **concluído em 30/10/2026 (Entregas 1 e 2)** — ver [`docs/progress/STEP-12.md`](progress/STEP-12.md).
+**Entregue:** inventário completo das rotas implementadas frente ao contrato; correção do registro de `/api/v1/drafts/*/publish` no `RateLimitInterceptor` (`WebConfig`) e resolução normalizada de caminho; correção da propriedade raiz `springdoc` no `application-prod.yml`; unificação do record `ApiError`; documentação de `POST /api/v1/auth/logout` via `OpenApiConfig`; revisão completa de schemas, headers (`Location`, `Retry-After`), limites de paginação (`page`, `size`), tratamento sanitizado de JSON malformado/validação (`400 INVALID_REQUEST`) e exemplos em `AuthController`, `LinkedInOAuthController` e `DraftController`; e teste automatizado de paridade garantindo que todas as 15 operações `/api/v1/**` expostas em runtime estejam em `/api-docs` no perfil `local` (sem rotas planejadas não implementadas) e desativadas (`404`) em `prod`.
 
 ### Passo 13 — Completar testes automatizados
+**Status:** **concluído em 11/11/2026** — ver [`docs/progress/STEP-13.md`](progress/STEP-13.md).
+**Entregue:** suíte automatizada consolidada em 19 classes e **93 testes** cobrindo todas as camadas da arquitetura DDD: invariantes e transições de estado do domínio (`DomainModelTest`), mapeamento sanitizado de DTOs (`DtoMappingTest`), clientes HTTP externos simulados via `MockRestServiceServer` (`LinkedInOAuthHttpClientTest`, `LinkedInPublishingHttpClientTest`), cifragem AES-256-GCM (`AesGcmTokenCipherTest`), conversores e stores de rate limit em memória e Redis (`InstantStringConverterTest`, `RateLimitStoreTest`), serviços de aplicação (`RegistrationServiceTest`, `RateLimitServiceTest`, `LinkedInOAuthServiceTest`, `DraftWorkflowServiceTest`), upgrade Flyway `V1 -> V2` sobre banco SQLite populado + persistência JPA com `PRAGMA foreign_keys = ON` (`SqlitePersistenceAndMigrationIntegrationTest`), rotação de sessão contra session fixation no login e paridade completa de rotas `/api/v1/**` com o OpenAPI. A validação de concorrência e migrations em Oracle descartável (Passo 10) e Redis real permanecem registradas como pendências de infraestrutura.
 
 ### Passo 14 — Aplicar segurança, LGPD técnica e observabilidade
+**Status:** **concluído no escopo de código e suíte automatizada em 11/11/2026** — ver [`docs/progress/STEP-14.md`](progress/STEP-14.md) e [`docs/PLANO_AUDITORIA_SEGURANCA.md`](PLANO_AUDITORIA_SEGURANCA.md).
+**Entregue:** revisão sistemática guiada por `docs/PLANO_AUDITORIA_SEGURANCA.md`; correção do escopo do `RateLimitInterceptor` (`WebConfig`) para cobrir escrita de rascunhos (`POST /api/v1/drafts`, `PATCH /api/v1/drafts/{id}`, `POST /api/v1/drafts/{id}/approve`) além de publicação, login, cadastro e OAuth, ignorando headers `X-Forwarded-For`/`Forwarded` não confiáveis (`RATE-01`, `RATE-03`); implementação de `AuditEvent.record(...)` com bloqueio de marcadores secretos e `AuditService` registrando eventos sanitizados (`USER_REGISTERED`, `LINKEDIN_OAUTH_STARTED`, `LINKEDIN_OAUTH_COMPLETED`, `LINKEDIN_OAUTH_REJECTED`, `LINKEDIN_CONNECTION_DISCONNECTED`, `DRAFT_APPROVED`, `PUBLICATION_COMPLETED`, `PUBLICATION_FAILED`); implementação de `DataRetentionService` para expurgo de `oauth_transaction` expiradas/consumidas (>24h) e exclusão local de conta/tokens com anonimização de auditoria (`USER_DATA_DELETED`); filtro `RequestCorrelationFilter` (`X-Request-Id` validado contra CRLF + MDC `requestId`), cabeçalhos `Referrer-Policy: no-referrer` e `Permissions-Policy`, logs operacionais estruturados com `latencyMs` sem tokens/texto sensível e handler fallback sanitizado (`500 INTERNAL_ERROR`) em `GlobalExceptionHandler`; suíte expandida para **98 testes em 20 classes**. Validações em Oracle descartável (`PUB-04`, `DB-01`), Redis distribuído real (`RATE-02`) e scans de pipeline/DAST permanecem documentadas como pendências de infraestrutura externa.
 
 ### Passo 15 — Dockerizar e documentar a execução
+**Status:** **concluído em 16/11/2026** — ver [`docs/progress/STEP-15.md`](progress/STEP-15.md).
+**Entregue:** [`Dockerfile`](../Dockerfile) multi-stage (`maven:3.9.9-eclipse-temurin-21` -> `eclipse-temurin:21-jre`) executando com usuário não-root (`appuser`, UID 10001), diretório `/app/data` preparado para volume SQLite e `HEALTHCHECK` em `/actuator/health`; [`.dockerignore`](../.dockerignore) isolando `.env`, chaves e bancos locais da imagem; [`docker-compose.yml`](../docker-compose.yml) com suporte ao perfil `local` (volume SQLite) e profile opcional `prod-local` (Redis); carregamento nativo de `.env` no bootstrap (`LinkedinAgentApplication.loadDotEnvIfPresent()`) compatível com Spring Boot 4.1.2; e documentação consolidada dos Passos 1 a 15 em `STEP-15.md` e `README.md`.
 
 ### Passo 16 — Revisão de portfólio e CI/CD, e validar migração experimental para PostgreSQL
+**Plano:** corrigir o título/escopo após confirmação do banco-alvo. Como o perfil atual é Oracle e as dependências incluem PostgreSQL, decidir se PostgreSQL é um segundo destino suportado ou dependência a remover; adicionar pipeline e validação apenas para destinos formalmente suportados. Não declarar portabilidade multibanco sem migrations e testes por banco.
+
+### Plano proposto para a próxima release
+
+O objetivo proposto é concluir o fluxo de publicação textual com histórico e comportamento de falha testado. A proposta não inclui mídia, oportunidades ou candidatura automática. A ordem executável e os critérios de validação estão em [`docs/status-atual.md`](status-atual.md); não iniciar decisões de recuperação automática enquanto os efeitos de timeout/resultado ambíguo não estiverem definidos.
 
 ## Checklist de passagem entre etapas
 
