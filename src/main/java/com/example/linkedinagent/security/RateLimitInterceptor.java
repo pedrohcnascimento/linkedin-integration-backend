@@ -18,6 +18,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 
     private static final Duration FIFTEEN_MINUTES = Duration.ofMinutes(15);
     private static final Duration ONE_HOUR = Duration.ofHours(1);
+    private static final Set<String> SAFE_METHODS = Set.of("GET", "HEAD", "OPTIONS");
     private static final Map<String, IpPolicy> POLICIES = Map.of(
             "GET /api/v1/auth/csrf", new IpPolicy("auth-csrf", 30, FIFTEEN_MINUTES),
             "POST /api/v1/auth/login", new IpPolicy("auth-login", 30, FIFTEEN_MINUTES),
@@ -71,10 +72,13 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         if (draftWrite) {
             return new RateLimitDecision("draft-write", authenticatedWriteLimits(request, 60, 30));
         }
-        // Any other request (authenticated reads such as GET /api/v1/drafts/{id}, or routes added
-        // later under the registered path patterns) falls into the default read bucket instead of
-        // bypassing rate limiting.
-        return new RateLimitDecision("api-read", authenticatedWriteLimits(request, 240, 120));
+        // Any other request falls into a default bucket instead of bypassing rate limiting.
+        // Only safe/read methods get the permissive read bucket; any unclassified write
+        // (e.g. a new DELETE/PUT route added later) gets the most restrictive write policy.
+        if (SAFE_METHODS.contains(method)) {
+            return new RateLimitDecision("api-read", authenticatedWriteLimits(request, 240, 120));
+        }
+        return new RateLimitDecision("api-write-default", authenticatedWriteLimits(request, 30, 10));
     }
 
     private List<RateLimitService.Limit> authenticatedWriteLimits(

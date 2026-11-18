@@ -8,6 +8,7 @@ import com.example.linkedinagent.repository.PublicationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +24,13 @@ public class DataRetentionService {
     private static final Logger log = LoggerFactory.getLogger(DataRetentionService.class);
     private static final Duration CONSUMED_OAUTH_STATE_RETENTION = Duration.ofHours(24);
     private static final Duration STUCK_PUBLISHING_TIMEOUT = Duration.ofMinutes(2);
-    private static final Duration AUDIT_EVENT_RETENTION = Duration.ofDays(90);
+    // Padrão de 90 dias: janela suficiente para investigação de incidentes de segurança
+    // (detecção + resposta) mantendo minimização de dados (LGPD art. 6º, III; art. 16).
+    // Configurável via app.retention.audit-event-retention / AUDIT_EVENT_RETENTION (ISO-8601, ex.: P90D).
+    static final Duration DEFAULT_AUDIT_EVENT_RETENTION = Duration.ofDays(90);
+    private static final Duration MINIMUM_AUDIT_EVENT_RETENTION = Duration.ofDays(1);
+
+    private Duration auditEventRetention = DEFAULT_AUDIT_EVENT_RETENTION;
 
     private final OAuthTransactionRepository oauthTransactionRepository;
     private final LinkedInAuthorizationRepository authorizationRepository;
@@ -71,6 +78,19 @@ public class DataRetentionService {
         this.clock = clock;
     }
 
+    @Autowired(required = false)
+    public void setAuditEventRetention(
+            @Value("${app.retention.audit-event-retention:P90D}") Duration auditEventRetention) {
+        if (auditEventRetention == null || auditEventRetention.compareTo(MINIMUM_AUDIT_EVENT_RETENTION) < 0) {
+            throw new IllegalStateException("app.retention.audit-event-retention must be at least 1 day (e.g. P90D).");
+        }
+        this.auditEventRetention = auditEventRetention;
+    }
+
+    public Duration getAuditEventRetention() {
+        return auditEventRetention;
+    }
+
     @Scheduled(fixedDelayString = "${app.retention.oauth-cleanup-interval-ms:900000}")
     @Transactional
     public int purgeExpiredOAuthTransactions() {
@@ -79,7 +99,7 @@ public class DataRetentionService {
             publicationRepository.markTimedOutPublishingAsOutcomeUnknown(now.minus(STUCK_PUBLISHING_TIMEOUT));
         }
         if (auditEventRepository != null) {
-            auditEventRepository.deleteOccurredBefore(now.minus(AUDIT_EVENT_RETENTION));
+            auditEventRepository.deleteOccurredBefore(now.minus(auditEventRetention));
         }
         Instant consumedCutoff = now.minus(CONSUMED_OAUTH_STATE_RETENTION);
         int deleted = oauthTransactionRepository.deleteExpiredOrConsumedBefore(now, consumedCutoff);

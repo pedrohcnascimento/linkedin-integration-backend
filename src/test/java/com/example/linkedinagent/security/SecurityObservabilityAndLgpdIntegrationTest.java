@@ -279,5 +279,9 @@ class SecurityObservabilityAndLgpdIntegrationTest {
         auditEventRepository.saveAndFlush(ancientAudit);
         dataRetentionService.purgeExpiredOAuthTransactions();
         assertThat(auditEventRepository.findById(ancientAudit.getId())).isEmpty();
+        assertThat(dataRetentionService.getAuditEventRetention()).isEqualTo(java.time.Duration.ofDays(90));
+        assertThatThrownBy(() -> dataRetentionService.setAuditEventRetention(java.time.Duration.ofHours(12)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("at least 1 day");
     }
 }

@@ -53,3 +53,8 @@ springdoc:
 logging:
   pattern:
     level: "%5p [req:%X{requestId:-none}]"
+
+app:
+  retention:
+    audit-event-retention: ${AUDIT_EVENT_RETENTION:P90D}
+    oauth-cleanup-interval-ms: ${OAUTH_CLEANUP_INTERVAL_MS:900000}
