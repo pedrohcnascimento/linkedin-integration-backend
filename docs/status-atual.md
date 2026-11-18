@@ -1,7 +1,7 @@
 # Status atual do projeto
 
-**Atualizado em:** 16/11/2026
-**Etapa atual:** Passo 15 concluído; próxima etapa do roteiro: **Passo 16 — Revisão de portfólio e CI/CD** (Passo 11 adiado para ciclo posterior; validação Oracle do Passo 10 permanece pendente de infraestrutura)
+**Atualizado em:** 17/11/2026
+**Etapa atual:** Passo 15 concluído; próxima etapa do roteiro: **Passo 16 — Revisão de portfólio e CI/CD** (Passo 11 adiado para ciclo posterior; perfil `prod` coberto por `ProdProfileOracleRedisIntegrationTest` com Testcontainers)
 **Referências:** [`docs/progress/STEP-15.md`](progress/STEP-15.md), [`docs/progress/STEP-14.md`](progress/STEP-14.md), [`docs/PLANO_AUDITORIA_SEGURANCA.md`](PLANO_AUDITORIA_SEGURANCA.md), [`docs/progress/STEP-13.md`](progress/STEP-13.md), [`docs/progress/STEP-12.md`](progress/STEP-12.md), [`docs/progress/STEP-11.md`](progress/STEP-11.md), [`docs/progress/STEP-10.md`](progress/STEP-10.md), [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md) e o [plano da próxima release](planejamento-tecnico.md#plano-proposto-para-a-próxima-release)
 
 Este documento consolida o estado vigente observado no código e na configuração do projeto. Os relatórios em `docs/progress/` registram decisões e validações do momento em que foram escritos; não são a fonte para pendências atuais.
@@ -38,8 +38,8 @@ Este documento consolida o estado vigente observado no código e na configuraç�
 
 ## Pendências e lacunas confirmadas
 
-1. Executar testes de concorrência com a mesma chave e chaves diferentes, além de migrations e validação Hibernate, em Oracle descartável. Oracle foi confirmado como alvo, mas não há serviço ou teste Oracle no repositório atual.
-2. Avançar para o Passo 15 (Dockerizar e documentar a execução). Os Passos 12 ([`docs/progress/STEP-12.md`](progress/STEP-12.md)), 13 ([`docs/progress/STEP-13.md`](progress/STEP-13.md)) e 14 ([`docs/progress/STEP-14.md`](progress/STEP-14.md)), além do procedimento de reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md)), foram concluídos.
+1. Executar testes de concorrência multi-thread com a mesma chave e chaves diferentes contra a instância Oracle de homologação. As migrations Oracle (`V1`/`V2`), a validação Hibernate (`ddl-auto=validate`), a unicidade case-insensitive de e-mail, o fluxo de publicação idempotente e o rate limiting em Redis estão cobertos por `ProdProfileOracleRedisIntegrationTest` (Testcontainers, executado automaticamente quando há Docker disponível, como no GitHub Actions).
+2. Executar o Passo 16 (Revisão final de portfólio e CI/CD), confirmando a chave `NVD_API_KEY` no GitHub Actions para o OWASP Dependency-Check e o job `docker-smoke`. Os Passos 12 ([`docs/progress/STEP-12.md`](progress/STEP-12.md)), 13 ([`docs/progress/STEP-13.md`](progress/STEP-13.md)), 14 ([`docs/progress/STEP-14.md`](progress/STEP-14.md)) e 15 ([`docs/progress/STEP-15.md`](progress/STEP-15.md)), além do procedimento de reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md)), foram concluídos.
 3. Revalidar a versão e o payload da Posts API em documentação oficial; a matriz registra verificação em 22/09/2026 e a configuração atual usa `Linkedin-Version: 202609`.
 4. Validar com JDK 21 no ambiente-alvo e, antes de exposição pública, validar Redis compartilhado e o tratamento de IP de origem atrás do proxy confiável.
 5. **Adiado para ciclo posterior (Passo 11):** oportunidades locais e integração com fontes externas autorizadas de vagas não serão feitas neste momento e ficam pós-estabilização da release atual (ver [`docs/progress/STEP-11.md`](progress/STEP-11.md) e [`docs/planejamento-fontes-vagas.md`](planejamento-fontes-vagas.md)).
@@ -51,7 +51,7 @@ Os itens 1–4 são trabalho de confiabilidade/validação e não devem ser desc
 **Objetivo de release proposto:** tornar o fluxo de publicação textual observável e confiável, sem ampliar para mídia ou oportunidades. Este recorte é uma proposta baseada nas lacunas imediatas do código, não uma decisão confirmada de produto.
 
 1. **Fechar o contrato de idempotência e falhas.** Concluído em SQLite/MockMvc em 30/10/2026: política implementada e testada para sucesso, replay, falha conhecida, resultado ambíguo (`OUTCOME_UNKNOWN`), reserva `PUBLISHING` interrompida e reconciliação manual documentada em [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md). Resta a validação equivalente em Oracle (itens 2 e 3).
-2. **Validar o banco suportado.** Oracle é o destino confirmado para `prod`; executar migrations, validação Hibernate e operações de publicação em schema descartável. As dependências PostgreSQL não significam suporte PostgreSQL.
+2. **Validar o banco suportado.** Oracle é o destino confirmado para `prod`; `ProdProfileOracleRedisIntegrationTest` executa migrations, validação Hibernate e operações de publicação em contêineres descartáveis Oracle Free e Redis. As dependências PostgreSQL antigas foram removidas do `pom.xml`.
 3. **Demonstrar concorrência e persistência.** Criar testes concorrentes para a mesma chave e chaves diferentes em Oracle; verificar lock pessimista, unicidade e estados parciais.
 4. **Completar o contrato do histórico.** Concluído no OpenAPI em 30/10/2026: schemas, exemplos, `OUTCOME_UNKNOWN` e `draftId` nulo após remoção do draft estão documentados e cobertos por teste de contrato.
 5. **Executar a verificação de release.** Rodar build e suíte completa com JDK 21, revalidar a versão/payload da Posts API em documentação oficial, verificar OpenAPI, rate limiting/Redis e origem de proxy no ambiente suportado; atualizar README, limitações e instruções com resultados reproduzíveis.

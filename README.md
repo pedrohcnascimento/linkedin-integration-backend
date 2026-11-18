@@ -20,8 +20,8 @@ Para o **estado funcional e as pendências atuais**, prevalece [`docs/status-atu
 |---|---|
 | Linguagem | Java 21 (LTS) |
 | Build | Maven |
-| Framework | Spring Boot **4.1.0** (Webmvc, Security, Validation, Actuator) |
-| Persistência | SQLite (local/testes); Oracle configurado no perfil `prod`, ainda sem validação em banco de teste |
+| Framework | Spring Boot **4.1.2** (Webmvc, Security, Validation, Actuator) |
+| Persistência | SQLite (local/testes); Oracle configurado no perfil `prod` e coberto por teste de integração com Testcontainers (`ProdProfileOracleRedisIntegrationTest`) |
 | Autenticação externa | OAuth 2.0 + OpenID Connect com o LinkedIn |
 | LinkedIn | OAuth 2.0 e publicação textual via **Posts API** implementados |
 | Documentação de API | springdoc-openapi 3.x |
@@ -44,8 +44,8 @@ Essas funcionalidades são expostas pelos endpoints listados abaixo e cobertas p
 
 ### Em andamento / planejado
 
-- **Passo 15 (próxima etapa):** Dockerizar e documentar a execução padronizada sem segredos embutidos.
-- **Passo 10 (pendência de infraestrutura):** validação em Oracle descartável das migrations, do schema e da concorrência; a configuração atual não comprova compatibilidade operacional.
+- **Passo 16 (próxima etapa):** Revisão final de portfólio, homologação em nuvem e CI/CD (ver [`docs/status-atual.md`](docs/status-atual.md)).
+- **Passo 10 (validação de concorrência em banco de produção):** as migrations Oracle, a validação Hibernate (`ddl-auto=validate`) e o fluxo de publicação com Redis são validados automaticamente em `ProdProfileOracleRedisIntegrationTest` (Testcontainers) quando há Docker disponível; resta executar testes de concorrência multi-thread com lock pessimista contra a instância Oracle de homologação.
 - **Passo 11 (adiado para ciclo posterior):** registro local de oportunidades e integração com fontes externas autorizadas de vagas não serão implementados neste momento (ver [`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)).
 
 As tabelas ou migrations preliminares de oportunidades não significam que esse recurso esteja executável. O histórico de publicações tem endpoint paginado; não há endpoints de oportunidades.
@@ -69,8 +69,9 @@ Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem 
 | `POST /api/v1/auth/login` | Público | Autentica e inicia uma sessão |
 | `POST /api/v1/auth/logout` | Sessão + CSRF | Encerra a sessão (`204`) |
 | `GET /api/v1/users/me` | Sessão | Consulta a conta autenticada |
+| `DELETE /api/v1/users/me` | Sessão + CSRF + senha | Exclui a conta local, remove tokens/transações e anonimiza eventos de auditoria (`204`) |
 | `GET /api/v1/linkedin/oauth/start` | Sessão | Inicia o fluxo OAuth e redireciona ao LinkedIn |
-| `GET /api/v1/linkedin/oauth/callback` | Público, protegido por `state` de uso único | Conclui o OAuth e retorna estado sanitizado |
+| `GET /api/v1/linkedin/oauth/callback` | Sessão + `state` de uso único vinculado ao usuário | Conclui o OAuth e retorna estado sanitizado |
 | `GET /api/v1/linkedin/connection` | Sessão | Consulta o estado da conexão LinkedIn |
 | `DELETE /api/v1/linkedin/connection` | Sessão + CSRF | Remove a autorização local (`204`) |
 | `POST /api/v1/drafts` | Sessão + CSRF | Cria um rascunho textual |
@@ -84,8 +85,8 @@ Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem 
 
 ## Próximos passos
 
-1. Executar o **Passo 15 — Dockerizar e documentar a execução**, padronizando imagem, health check e configuração por variáveis de ambiente sem incluir `.env` ou dados locais.
-2. Validar concorrência, migrations e schema em Oracle descartável (pendência remanescente do Passo 10) assim que houver instância Oracle disponível, além de confirmar JDK 21, Redis e IP atrás do proxy antes de exposição pública.
+1. Executar o **Passo 16 — Revisão de portfólio e CI/CD**, confirmando a execução no GitHub Actions (com `NVD_API_KEY` configurada nos secrets para o OWASP Dependency-Check e o job `docker-smoke`).
+2. Validar concorrência multi-thread e origem de IP atrás de proxy confiável (`TRUSTED_PROXY_IPS`) no ambiente Oracle/Redis de homologação antes de exposição pública.
 3. Somente em ciclo posterior à estabilização da v1, retomar o Passo 11 (oportunidades locais e fontes externas autorizadas de vagas — ver [`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)).
 
 ## Arquitetura
@@ -116,13 +117,13 @@ Este repositório **não inclui o Maven Wrapper** (`mvnw`/`mvnw.cmd`) ainda — 
 # build + testes
 mvn clean test
 
-# subir localmente
-mvn spring-boot:run
+# subir localmente (defina SPRING_PROFILES_ACTIVE=local no .env ou na linha de comando)
+SPRING_PROFILES_ACTIVE=local mvn spring-boot:run
 ```
 
 No IntelliJ: abra o projeto como Maven (`pom.xml`), deixe indexar as dependências, e rode `LinkedinAgentApplication` ou a suíte de testes pela própria IDE.
 
-Para habilitar a documentação somente em desenvolvimento, execute com `SPRING_PROFILES_ACTIVE=local` (esse já é o perfil padrão). Não habilite as propriedades `springdoc.api-docs.enabled` ou `springdoc.swagger-ui.enabled` em produção.
+**Atenção ao perfil padrão (`prod` fail-safe):** em `application.yml`, a propriedade é `spring.profiles.active: ${SPRING_PROFILES_ACTIVE:prod}`. Isso significa que, se `SPRING_PROFILES_ACTIVE` não estiver definida no ambiente nem no arquivo `.env`, a aplicação iniciará no perfil `prod` por segurança (exigindo Oracle e Redis e desativando o Swagger). Para desenvolvimento local com SQLite e documentação interativa (`/swagger-ui.html`), defina explicitamente `SPRING_PROFILES_ACTIVE=local` (por exemplo no `.env` ou via variável de ambiente). Não habilite as propriedades `springdoc.api-docs.enabled` ou `springdoc.swagger-ui.enabled` em produção.
 
 Depois de validar que builda, você pode gerar o wrapper com `mvn -N wrapper:wrapper` (ou `mvn wrapper:wrapper` na raiz) para passar a usar `./mvnw` — mais consistente entre máquinas.
 
@@ -153,11 +154,12 @@ O projeto inclui [`Dockerfile`](Dockerfile) multi-stage (build com Maven + JDK 2
 # 1. Copie o .env.example para .env e garanta SPRING_PROFILES_ACTIVE=local
 cp .env.example .env
 
-# 2. Suba com Docker Compose (usa volume nomeado para o SQLite em /app/data)
+# 2. Suba com Docker Compose (define SPRING_PROFILES_ACTIVE=local por padrão e usa volume nomeado para o SQLite em /app/data)
 docker compose up --build
 
-# Opcional: para subir também uma instância Redis local de teste
-docker compose --profile prod-local up --build
+# Opcional: para subir também um container Redis local em 127.0.0.1:6379 para testes manuais do RedisRateLimitStore
+# (observação: o serviço app no perfil local usa InMemoryRateLimitStore; somente o perfil prod usa Redis via RATE_LIMIT_REDIS_URL)
+docker compose --profile redis-local up --build
 ```
 
 Para build e execução avulsa da imagem:
@@ -196,11 +198,9 @@ Login é limitado por IP (30 tentativas/15 min) e conta (8/15 min); cadastro por
 
 No perfil `prod`, Redis é obrigatório e compartilhado por todas as instâncias. Scripts Lua incrementam atomicamente os contadores e as chaves expiram ao fim das janelas. Configure `RATE_LIMIT_REDIS_URL` com autenticação e TLS quando disponível, e use o mesmo `RATE_LIMIT_HMAC_KEY` Base64 de pelo menos 32 bytes em todas as instâncias (por exemplo, gere-o com `openssl rand -base64 32`); os valores usados nas chaves são HMACs, não IPs, e-mails, sessões ou state em claro. Se Redis estiver indisponível, as requisições limitadas falham fechadas com `503` e `Retry-After: 5`. Os perfis `local` e `test` usam armazenamento em memória, sem garantia entre reinícios ou instâncias, portanto não devem ser usados como mecanismo de produção distribuído.
 
-O servidor usa `getRemoteAddr()` e ignora `Forwarded`/`X-Forwarded-For` para evitar falsificação pelo cliente. Atrás de proxy, preserve o IP de origem até a aplicação ou configure o rate limiting no gateway confiável; não encaminhe headers fornecidos diretamente pelo cliente como se fossem confiáveis.
+O servidor usa `getRemoteAddr()` por padrão e só lê `X-Forwarded-For` quando o endereço remoto pertence à lista configurada em `TRUSTED_PROXY_IPS` (IPs ou blocos CIDR). Sem proxies confiáveis configurados, cabeçalhos enviados pelo cliente são ignorados para evitar falsificação.
 
-O Maven declara também dependências PostgreSQL, mas `application-prod.yml` seleciona Oracle, as migrations de produção disponíveis são Oracle e não há teste `PostgreSqlProfileIntegrationTest` no código atual. Portanto, não use o antigo comando PostgreSQL como evidência de validação do perfil `prod`. O teste automatizado do banco de produção ainda precisa ser criado/ajustado para o banco efetivamente escolhido e executado em uma instância descartável.
-
-Os testes atuais exercitam os limites com armazenamento simulado/em memória; não há teste de integração Redis no código-fonte presente. Valide Redis em ambiente descartável antes de depender dele em produção.
+O `pom.xml` declara apenas os drivers e módulos Flyway efetivamente suportados (`sqlite-jdbc` para `local`/`test` e `ojdbc11` + `flyway-database-oracle` para `prod`). O teste `ProdProfileOracleRedisIntegrationTest` sobe contêineres descartáveis do Oracle Free (`gvenzl/oracle-free:23-slim-faststart`) e do Redis (`redis:7.4-alpine`) via Testcontainers para validar migrations Oracle, `ddl-auto=validate`, unicidade case-insensitive de e-mail, fluxo de publicação idempotente e gravação de chaves de rate limit no Redis. Quando o ambiente não possui Docker ativo, esse teste é ignorado automaticamente (`disabledWithoutDocker = true`).
 
 ### Autenticação local
 
@@ -219,7 +219,7 @@ O callback está configurado como `http://localhost:8080/api/v1/linkedin/oauth/c
 - Oportunidades ainda não têm endpoints funcionais.
 - Não há refresh token presumido — depende do que o LinkedIn efetivamente conceder para o app registrado.
 - Falhas conhecidas são registradas como `FAILED`; resultados ambíguos ficam em `OUTCOME_UNKNOWN` ou permanecem `PUBLISHING` após interrupção. Ambos bloqueiam novo envio até reconciliação manual conforme [`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md); não existe retry automático nem endpoint de reconciliação.
-- O perfil `prod` está configurado para Oracle, mas sua migration/schema não têm teste de integração Oracle no repositório.
+- O teste de integração `ProdProfileOracleRedisIntegrationTest` exige Docker ativo para iniciar os contêineres Oracle Free e Redis via Testcontainers (executa automaticamente no GitHub Actions).
 
 ## Contribuindo
 

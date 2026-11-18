@@ -7,7 +7,7 @@
 
 Executar e consolidar o **Passo 15 — Dockerizar e documentar a execução**, abrangendo:
 1. Criação de imagem Docker multi-stage reproduzível (`JDK 21` no build e `JRE 21` no runtime), executando com usuário não-root (`appuser`), `HEALTHCHECK` apontando para `/actuator/health` e isolamento estrito via `.dockerignore` para impedir que `.env`, chaves ou arquivos SQLite locais (`data/*.db`) entrem na imagem.
-2. Orquestração local via `docker-compose.yml` com volume nomeado para persistência SQLite no perfil `local` e serviço `redis` opcional (`--profile prod-local`) para testes do limitador de taxa distribuído.
+2. Orquestração local via `docker-compose.yml` com volume nomeado para persistência SQLite no perfil `local` e serviço `redis` opcional (`--profile redis-local`, restrito a `127.0.0.1:6379`) para inspeção local do armazenamento Redis.
 3. Correção do carregamento automático do arquivo `.env` no bootstrap da aplicação (`LinkedinAgentApplication.loadDotEnvIfPresent()`) para compatibilidade nativa com **Spring Boot 4.1.2** (sem depender de `META-INF/spring.factories` removido no upgrade do `spring-dotenv`) e desativação do scan desnecessário de repositórios Spring Data Redis (`spring.data.redis.repositories.enabled: false`).
 4. Documentação consolidada do desenvolvimento completo do projeto (Passos 1 a 15), arquitetura DDD, modelo de segurança e instruções de execução local, via Docker e em nuvem.
 
@@ -47,7 +47,7 @@ A tabela abaixo resume a trajetória completa de engenharia do `linkedin-integra
   - Bloqueia o envio de `.env`, `.env.*` (exceto `.env.example`), `data/*.db`, `data/*.db-wal`, `data/*.db-shm`, `target/`, `.git/` e `.idea/` para o contexto de build do Docker.
 - **[`docker-compose.yml`](../../docker-compose.yml):**
   - Define o serviço `app` lendo variáveis locais do `.env` em tempo de execução (sem embuti-las na imagem), expondo a porta `8080` e montando o volume nomeado `sqlite_data:/app/data`.
-  - Define o serviço opcional `redis` (`redis:7.4-alpine`) sob o profile `prod-local` para testes locais com rate limiting distribuído.
+  - Define o serviço opcional `redis` (`redis:7.4-alpine`) sob o profile `redis-local`, publicando a porta exclusivamente em loopback (`127.0.0.1:6379:6379`). O serviço `app` no perfil `local` utiliza `InMemoryRateLimitStore`; o Redis é usado pelo perfil `prod` (`RedisRateLimitStore`).
 
 ### 3.2. Ajustes de Inicialização e Configuração (Spring Boot 4.1.2)
 - **[`LinkedinAgentApplication.java`](../../src/main/java/com/example/linkedinagent/LinkedinAgentApplication.java):**
