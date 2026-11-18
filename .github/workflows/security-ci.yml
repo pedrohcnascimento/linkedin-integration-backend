@@ -26,21 +26,71 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Run unit and integration test suite
+      - name: Run unit and integration test suite (includes Oracle + Redis via Testcontainers)
         run: mvn -B verify
 
-      - name: Run OWASP Dependency-Check (when NVD_API_KEY is configured)
+      - name: Cache OWASP Dependency-Check NVD data
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.m2/repository/org/owasp/dependency-check-data
+          key: dependency-check-nvd-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            dependency-check-nvd-${{ runner.os }}-
+
+      - name: Run OWASP Dependency-Check
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
           if [ -z "${NVD_API_KEY:-}" ]; then
-            echo "Skipping OWASP Dependency-Check: NVD_API_KEY secret is not configured."
+            # Não passa em silêncio: gera anotação visível no PR e no resumo da execução.
+            echo "::warning title=Dependency-Check NOT executed::NVD_API_KEY secret is not configured. Dependency vulnerability scan was skipped. Request a free key at https://nvd.nist.gov/developers/request-an-api-key and add it as the NVD_API_KEY repository secret."
+            echo "### ⚠️ OWASP Dependency-Check was NOT executed" >> "$GITHUB_STEP_SUMMARY"
+            echo "Configure the \`NVD_API_KEY\` repository secret to enable the dependency vulnerability scan." >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "schedule" ]; then
+              echo "Failing the scheduled security run because the dependency scan cannot execute."
+              exit 1
+            fi
             exit 0
           fi
           mvn -B org.owasp:dependency-check-maven:12.1.0:check \
             -DnvdApiKey="${NVD_API_KEY}" \
             -DfailBuildOnCVSS=7 \
             -Dformats=HTML,JSON
+
+  docker-smoke:
+    name: Docker build & health smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build image
+        run: docker build -t linkedin-integration-backend:ci .
+
+      - name: Verify image contains no local secrets or databases
+        run: |
+          found=$(docker run --rm --entrypoint sh linkedin-integration-backend:ci -c \
+            'find /app \( -name ".env" -o -name ".env.*" -o -name "*.db" -o -name "*.sqlite*" -o -name "*.jks" -o -name "*.pem" -o -name "*.p12" -o -iname "*secret*" \) 2>/dev/null')
+          if [ -n "$found" ]; then
+            echo "Unexpected sensitive file(s) in image:"; echo "$found"; exit 1
+          fi
+          echo "No sensitive files found under /app."
+
+      - name: Run container (local profile) and wait for health
+        run: |
+          docker run -d --name app -p 8080:8080 -e SPRING_PROFILES_ACTIVE=local linkedin-integration-backend:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/actuator/health | grep -q '"UP"'; then
+              echo "Application is healthy"; exit 0
+            fi
+            sleep 3
+          done
+          docker logs app
+          exit 1
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs app || true
 
   gitleaks:
     name: Gitleaks Secret Scan
