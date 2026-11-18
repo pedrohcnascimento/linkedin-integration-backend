@@ -8,6 +8,7 @@ import com.example.linkedinagent.repository.AppUserRepository;
 import com.example.linkedinagent.repository.LinkedInAuthorizationRepository;
 import com.example.linkedinagent.security.TokenCipher;
 import com.jayway.jsonpath.JsonPath;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -97,6 +98,9 @@ class ProdProfileOracleRedisIntegrationTest {
     private MockMvc mockMvc;
 
     @Autowired
+    private Flyway flyway;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
@@ -116,9 +120,8 @@ class ProdProfileOracleRedisIntegrationTest {
 
     @Test
     void oracleMigrationsAndHibernateValidationSupportTheFullPublicationFlowWithRedisRateLimiting() throws Exception {
-        assertThat(jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1", Integer.class))
-                .isGreaterThanOrEqualTo(2);
+        assertThat(flyway.info().applied())
+                .hasSizeGreaterThanOrEqualTo(2);
 
         String email = UUID.randomUUID() + "@example.com";
         MockHttpSession session = registerAndLogin(email);

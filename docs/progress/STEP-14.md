@@ -98,14 +98,17 @@ Executar e consolidar o **Passo 14 — Aplicar segurança, LGPD técnica e obser
 - **Remediation:** O limite de `8/15min` em `AuthResource.login` passou a ser debitado apenas em falhas de autenticação (`catch (AuthenticationException)`) e composto por conta + IP (`dimension = "account-ip"`, `normalizedEmail + "|" + clientIp`), impedindo que tentativas falhas de outro IP ou com senha incorreta bloqueiem o login legítimo.
 - **Regression test:** `AuthResourceIntegrationTest.failedLoginsRateLimitOnlyTheOffendingAccountIpAndDoNotLockOutValidCredentials` e `RateLimitWebIntegrationTest.rateLimitsFailedLoginAttemptsByAccountAndIpAfterTheIpBudgetAllowsThem`.
 
-### FINDING-10 — Callback OAuth não vinculado à sessão autenticada iniciadora (`OAUTH-01`)
+### FINDING-10 — Callback OAuth não vinculado à sessão autenticada iniciadora (`OAUTH-01`) e avaliação do alerta CodeQL `java/user-controlled-bypass`
 - **ID:** `FINDING-10` (`OAUTH-01`)
 - **Severity:** Low to Medium
-- **Status:** `FIXED`
+- **Status:** `FIXED` (alerta CodeQL `java/user-controlled-bypass` em `LinkedInOAuthService.java:117` classificado como **Falso Positivo**)
 - **Affected component/route:** `SecurityConfig`, `LinkedInOAuthResource.callback` (`GET /api/v1/linkedin/oauth/callback`), `LinkedInOAuthService`
 - **Evidence:** `/api/v1/linkedin/oauth/callback` era público (`permitAll()`) e identificava o usuário apenas pela linha de `oauth_transaction` correspondente ao `state`. Quem obtivesse um `state` vivo dentro de 10 minutos poderia concluir o OAuth com sua própria conta do LinkedIn na conta local da vítima.
 - **Remediation:** Removido `/api/v1/linkedin/oauth/callback` de `permitAll()` em `SecurityConfig` (exigindo sessão autenticada); `LinkedInOAuthResource.callback` agora injeta `@AuthenticationPrincipal AppUserPrincipal user` e `LinkedInOAuthService.complete` / `rejectAuthorization` verificam que `transaction.getAppUser().getId()` coincide com o usuário da sessão autenticada após consumir atomicamente o `state`.
-- **Regression test:** `AuthResourceIntegrationTest.oauthEndpointsRequireLocalAuthenticationIncludingStateProtectedCallback` e `AuthResourceIntegrationTest.oauthCallbackRejectsStateFromDifferentAuthenticatedSessionAndConsumesState`.
+- **Análise técnica do alerta CodeQL #2 (`java/user-controlled-bypass` em `LinkedInOAuthService.java:117`):**
+  - A regra `java/user-controlled-bypass` sinaliza `linkedinOAuthClient.exchangeAuthorizationCode(authorizationCode)` porque o nome do método contém `Authorization` e sua execução depende de condições nos parâmetros de query (`error`, `state`, `code`) recebidos em `LinkedInOAuthResource.callback`.
+  - **Justificativa de Falso Positivo:** nenhuma das condições permite contornar uma verificação de segurança; todas são guard-clauses fail-closed que abortam o fluxo lançando `LinkedInOAuthException` ou retornando `400 LINKEDIN_AUTHORIZATION_DENIED` antes de qualquer chamada externa. Quando a execução alcança a linha 117, o método já exigiu e validou obrigatoriamente: (1) sessão local autenticada (`expectedUserId != null`), (2) presença de `state` e `authorizationCode` não vazios, (3) existência da transação por `SHA-256(state)` (`findByStateHash`), (4) vínculo estrito da transação ao `expectedUserId` da sessão autenticada, (5) não expiração (`transaction.isUnexpiredAt(now)`) e (6) consumo atômico de uso único no banco (`markConsumedIfUnused(stateHash, now) == 1`).
+- **Regression test:** `AuthResourceIntegrationTest.oauthEndpointsRequireLocalAuthenticationIncludingStateProtectedCallback`, `AuthResourceIntegrationTest.oauthCallbackRejectsStateFromDifferentAuthenticatedSessionAndConsumesState` e `LinkedInOAuthServiceTest.completeRejectsNullOrMismatchedUserMissingParametersAndStateReplayWithoutCallingLinkedIn`.
 
 ### FINDING-11 — Publicações presas em `PUBLISHING` após falha local pós-envio ou queda de processo (`PUB-05`)
 - **ID:** `FINDING-11` (`PUB-05`)

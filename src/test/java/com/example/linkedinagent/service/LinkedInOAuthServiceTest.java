@@ -82,6 +82,36 @@ class LinkedInOAuthServiceTest {
     }
 
     @Test
+    void completeRejectsNullOrMismatchedUserMissingParametersAndStateReplayWithoutCallingLinkedIn() {
+        Fixture fixture = new Fixture();
+        String validState = fixture.start();
+        UUID anotherUser = UUID.randomUUID();
+
+        // Missing or blank user/state/code must fail before touching the repository or LinkedIn
+        assertThatThrownBy(() -> fixture.service.complete(null, validState, "authorization-code"))
+                .isInstanceOf(LinkedInOAuthException.class)
+                .hasMessage("OAuth state is missing or invalid.");
+        assertThatThrownBy(() -> fixture.service.complete(USER_ID, " ", "authorization-code"))
+                .isInstanceOf(LinkedInOAuthException.class)
+                .hasMessage("OAuth state is missing or invalid.");
+        assertThatThrownBy(() -> fixture.service.complete(USER_ID, validState, " "))
+                .isInstanceOf(LinkedInOAuthException.class)
+                .hasMessage("LinkedIn authorization was not completed.");
+
+        // State belonging to USER_ID cannot be completed by another authenticated user, and remains unconsumed
+        assertThatThrownBy(() -> fixture.service.complete(anotherUser, validState, "authorization-code"))
+                .isInstanceOf(LinkedInOAuthException.class)
+                .hasMessage("OAuth state is missing, expired, or already used.");
+        verify(fixture.oauthClient, never()).exchangeAuthorizationCode(anyString());
+        assertThat(fixture.consumed.get()).isFalse();
+
+        // The legitimate owner can still consume the state once, and a second attempt is rejected
+        when(fixture.tokenCipher.encrypt("access-token", USER_ID.toString())).thenReturn("enc-access");
+        fixture.service.complete(USER_ID, validState, "authorization-code");
+        assertReplayRejected(fixture);
+    }
+
+    @Test
     void completeUpdatesExistingAuthorizationOnReconnectWithoutPersistingRefreshTokenAndDisconnectRemovesLocalState() {
         Fixture fixture = new Fixture();
         LinkedInAuthorization existing = LinkedInAuthorization.createForUser(
