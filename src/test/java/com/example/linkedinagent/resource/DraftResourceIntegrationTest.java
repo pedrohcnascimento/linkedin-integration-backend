@@ -93,13 +93,13 @@ class DraftResourceIntegrationTest {
                 .andExpect(jsonPath("$.status").value("APPROVED"));
 
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "publish-key-1"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-publish-key-1"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("PUBLISHED"))
                 .andExpect(jsonPath("$.externalPostId").value("urn:li:share:123"));
 
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "publish-key-1"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-publish-key-1"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("PUBLISHED"))
                 .andExpect(jsonPath("$.externalPostId").value("urn:li:share:123"));
@@ -113,7 +113,7 @@ class DraftResourceIntegrationTest {
         UUID draftId = createDraft(session);
 
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "key"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-key"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value("DRAFT_NOT_APPROVED"));
 
@@ -224,12 +224,12 @@ class DraftResourceIntegrationTest {
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", firstDraftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "shared-idempotency-key"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-shared-idempotency-key"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("PUBLISHED"));
 
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", secondDraftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "shared-idempotency-key"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-shared-idempotency-key"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_CONFLICT"));
 
@@ -245,8 +245,8 @@ class DraftResourceIntegrationTest {
     @Test
     void publicationHistoryIsPagedAndScopedToAuthenticatedOwner() throws Exception {
         MockHttpSession firstSession = loginAndRegister();
-        publishDraft(firstSession, createDraft(firstSession), "history-key-1");
-        publishDraft(firstSession, createDraft(firstSession), "history-key-2");
+        publishDraft(firstSession, createDraft(firstSession), "test-idempotency-key-history-1");
+        publishDraft(firstSession, createDraft(firstSession), "test-idempotency-key-history-2");
         MockHttpSession secondSession = loginAndRegister();
 
         mockMvc.perform(get("/api/v1/publications").session(firstSession)
@@ -279,7 +279,7 @@ class DraftResourceIntegrationTest {
                 .thenThrow(new LinkedInPublishingException("LINKEDIN_UNAVAILABLE", "provider details"));
 
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "failed-key"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-failed-key"))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.code").value("LINKEDIN_UNAVAILABLE"))
                 .andExpect(jsonPath("$.message").value("LinkedIn publication failed."));
@@ -291,7 +291,7 @@ class DraftResourceIntegrationTest {
                 .andExpect(jsonPath("$.content[0].failureCode").value("LINKEDIN_UNAVAILABLE"));
 
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "failed-key"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-failed-key"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PUBLICATION_ALREADY_PROCESSED"));
         verify(publishingClient, times(1)).publish(any(), any());
@@ -308,7 +308,7 @@ class DraftResourceIntegrationTest {
                 .thenThrow(new LinkedInPublishingException("LINKEDIN_PROVIDER_UNAVAILABLE", "transport failure", true));
 
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "ambiguous-key"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-ambiguous-key"))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.code").value("LINKEDIN_RESULT_UNKNOWN"));
 
@@ -318,12 +318,12 @@ class DraftResourceIntegrationTest {
                 .andExpect(jsonPath("$.content[0].failureCode").value("LINKEDIN_RESULT_UNKNOWN"));
 
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "ambiguous-key"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-ambiguous-key"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PUBLICATION_ALREADY_PROCESSED"));
 
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "different-key"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-different-key"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PUBLICATION_OUTCOME_UNKNOWN"));
         verify(publishingClient, times(1)).publish(any(), any());
@@ -340,7 +340,7 @@ class DraftResourceIntegrationTest {
                 .thenThrow(new LinkedInPublishingException("LINKEDIN_PROVIDER_UNAVAILABLE", "read timeout", true));
 
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "reconcile-published-key"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-reconcile-published-key"))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.code").value("LINKEDIN_RESULT_UNKNOWN"));
 
@@ -386,7 +386,7 @@ class DraftResourceIntegrationTest {
 
         // Replay com a mesma chave devolve o registro reconciliado (201) sem nova chamada ao LinkedIn.
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "reconcile-published-key"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-reconcile-published-key"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(publicationId))
                 .andExpect(jsonPath("$.status").value("PUBLISHED"))
@@ -395,7 +395,7 @@ class DraftResourceIntegrationTest {
 
         // Chave diferente não pode publicar novamente porque o draft já está PUBLISHED.
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "another-key-after-published"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-another-key-after-published"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value("DRAFT_NOT_APPROVED"));
 
@@ -423,7 +423,7 @@ class DraftResourceIntegrationTest {
                 .thenReturn(new PublicationResult("urn:li:share:published-with-fresh-key"));
 
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "interrupted-key"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-interrupted-key"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
                 .andExpect(jsonPath("$.message").value("An unexpected error occurred."));
@@ -433,11 +433,11 @@ class DraftResourceIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].status").value("PUBLISHING"));
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "interrupted-key"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-interrupted-key"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PUBLICATION_ALREADY_PROCESSED"));
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "premature-new-key"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-premature-new-key"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PUBLICATION_IN_PROGRESS"));
 
@@ -474,12 +474,12 @@ class DraftResourceIntegrationTest {
 
         // A chave antiga continua bloqueada; o envio só ocorre quando o usuário envia explicitamente uma chave nova.
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "interrupted-key"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-interrupted-key"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PUBLICATION_ALREADY_PROCESSED"));
 
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
-                        .session(session).with(csrf()).header("Idempotency-Key", "fresh-key-after-reconciliation"))
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-fresh-key-after-reconciliation"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("PUBLISHED"))
                 .andExpect(jsonPath("$.externalPostId").value("urn:li:share:published-with-fresh-key"));
@@ -534,10 +534,10 @@ class DraftResourceIntegrationTest {
                 .thenThrow(new IllegalStateException("simulated process crash during publish"));
 
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", firstDraftId)
-                        .session(firstSession).with(csrf()).header("Idempotency-Key", "stuck-key-user-1"))
+                        .session(firstSession).with(csrf()).header("Idempotency-Key", "test-idempotency-key-stuck-key-user-1"))
                 .andExpect(status().isInternalServerError());
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", secondDraftId)
-                        .session(secondSession).with(csrf()).header("Idempotency-Key", "stuck-key-user-2"))
+                        .session(secondSession).with(csrf()).header("Idempotency-Key", "test-idempotency-key-stuck-key-user-2"))
                 .andExpect(status().isInternalServerError());
 
         String staleTimestamp = java.time.Instant.now().minus(java.time.Duration.ofMinutes(3)).toString();
@@ -547,7 +547,7 @@ class DraftResourceIntegrationTest {
 
         // User 1 triggers a new publish attempt; only User 1's timed-out PUBLISHING row is transitioned to OUTCOME_UNKNOWN.
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", firstDraftId)
-                        .session(firstSession).with(csrf()).header("Idempotency-Key", "fresh-key-user-1"))
+                        .session(firstSession).with(csrf()).header("Idempotency-Key", "test-idempotency-key-fresh-key-user-1"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PUBLICATION_OUTCOME_UNKNOWN"));
 

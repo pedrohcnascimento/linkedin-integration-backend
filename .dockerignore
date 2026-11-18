@@ -18,6 +18,25 @@ data/*.db-shm
 data/*.db-wal
 *.sqlite
 *.db
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# Arquivos de segredo/certificados em qualquer pasta (inclusive src/, copiado pelo Dockerfile)
+**/.env
+**/.env.*
+!.env.example
+**/application-secrets.yml
+**/application-secrets.yaml
+**/application-local.yaml
+**/*secret*
+**/*secrets*
+**/*credentials*
+!src/main/resources/db/migration/*/V*__*credentials*.sql
+**/*.pem
+**/*.p12
+**/*.jks
+**/*.key
 
 # Documentação (não necessária no contexto de compilação da imagem)
 docs/

@@ -36,9 +36,11 @@ application-secrets.yml
 *.p12
 *.jks
 *secret*
+*secrets*
 *credentials*
-!src/
-!src/**
+# Exceção mínima: migrations Flyway cujo nome contém "credentials" (schema, sem segredos).
+# NÃO reabilitar src/ inteiro: segredos acidentais dentro de src/ devem continuar ignorados.
+!src/main/resources/db/migration/*/V*__*credentials*.sql
 
 # --- Banco de dados local (SQLite) ---
 *.db

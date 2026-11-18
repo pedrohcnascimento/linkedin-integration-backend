@@ -1,0 +1,6 @@
+# Falsos positivos revisados manualmente (formato: commit:arquivo:regra:linha).
+# Commit histórico a8b31f0: valor fixo "publish-key-1" enviado no header HTTP Idempotency-Key em teste
+# de integração. É um identificador de requisição para idempotência, não uma credencial.
+# O arquivo foi removido na refatoração DDD e os testes atuais usam "test-idempotency-key-*".
+a8b31f0c6eb3d6fda24f93bd15355a56ea4880bc:src/test/java/com/example/linkedinagent/adapter/in/web/DraftControllerIntegrationTest.java:generic-api-key:77
+a8b31f0c6eb3d6fda24f93bd15355a56ea4880bc:src/test/java/com/example/linkedinagent/adapter/in/web/DraftControllerIntegrationTest.java:generic-api-key:83

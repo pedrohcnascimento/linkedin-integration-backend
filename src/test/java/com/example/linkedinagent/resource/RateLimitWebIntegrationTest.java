@@ -188,7 +188,7 @@ class RateLimitWebIntegrationTest {
         mockMvc.perform(post("/api/v1/drafts/{id}/publish", UUID.randomUUID())
                         .with(user(testUser()))
                         .with(csrf())
-                        .header("Idempotency-Key", "rate-limit-test-key"))
+                        .header("Idempotency-Key", "test-idempotency-key-rate-limit-test-key"))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string("Retry-After", "37"))
                 .andExpect(jsonPath("$.code").value("RATE_LIMITED"))
@@ -209,7 +209,7 @@ class RateLimitWebIntegrationTest {
                         .with(user(testUser()))
                         .session(new MockHttpSession())
                         .with(csrf())
-                        .header("Idempotency-Key", "rate-limit-account-key"))
+                        .header("Idempotency-Key", "test-idempotency-key-rate-limit-account-key"))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string("Retry-After", "41"))
                 .andExpect(jsonPath("$.code").value("RATE_LIMITED"));

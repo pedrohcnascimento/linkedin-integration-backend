@@ -1,0 +1,15 @@
+title = "linkedin-integration-backend gitleaks config"
+
+# Mantém todas as regras padrão do Gitleaks.
+[extend]
+useDefault = true
+
+# Exceção mínima: apenas valores explicitamente fictícios do header Idempotency-Key
+# usados nos testes. Não ignora diretórios inteiros nem outras regras.
+[allowlist]
+description = "Chaves de idempotência fictícias em testes (identificadores de requisição, não credenciais)"
+regexTarget = "line"
+regexes = [
+  '''\.header\("Idempotency-Key",\s*"test-idempotency-key-[a-z0-9-]+"\)''',
+  '''"test-idempotency-key-[a-z0-9-]+"''',
+]
