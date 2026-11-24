@@ -1,9 +1,11 @@
 package com.example.linkedinagent.service;
 
 import com.example.linkedinagent.client.LinkedInPublishingClient;
+import com.example.linkedinagent.domain.AppUser;
 import com.example.linkedinagent.domain.ContentDraft;
 import com.example.linkedinagent.domain.LinkedInAuthorization;
 import com.example.linkedinagent.domain.Publication;
+import com.example.linkedinagent.domain.PublicationResult;
 import com.example.linkedinagent.exception.DraftWorkflowException;
 import com.example.linkedinagent.repository.ContentDraftRepository;
 import com.example.linkedinagent.repository.LinkedInAuthorizationRepository;
@@ -16,10 +18,13 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -163,8 +168,7 @@ class DraftWorkflowServiceTest {
         when(authorizationRepository.findByAppUser_Id(userId)).thenReturn(Optional.of(authorization));
         when(tokenCipher.decrypt("encrypted-token", userId.toString())).thenReturn("access-token");
 
-        java.util.concurrent.atomic.AtomicReference<Publication> reservedPublication =
-                new java.util.concurrent.atomic.AtomicReference<>();
+        AtomicReference<Publication> reservedPublication = new AtomicReference<>();
         when(publicationRepository.saveAndFlush(any())).thenAnswer(invocation -> {
             Publication saved = invocation.getArgument(0);
             reservedPublication.set(saved);
@@ -172,7 +176,7 @@ class DraftWorkflowServiceTest {
         });
         when(publicationRepository.findById(any())).thenAnswer(invocation -> Optional.ofNullable(reservedPublication.get()));
         when(publishingClient.publish(anyString(), any()))
-                .thenReturn(new com.example.linkedinagent.domain.PublicationResult("urn:li:share:accepted-1"));
+                .thenReturn(new PublicationResult("urn:li:share:accepted-1"));
 
         DraftWorkflowService service = new DraftWorkflowService(
                 draftRepository,
@@ -191,6 +195,55 @@ class DraftWorkflowServiceTest {
         assertThat(reservedPublication.get()).isNotNull();
         assertThat(reservedPublication.get().getStatus()).isEqualTo(Publication.STATUS_OUTCOME_UNKNOWN);
         assertThat(reservedPublication.get().getFailureCode()).isEqualTo(Publication.FAILURE_RESULT_UNKNOWN);
+    }
+
+    @Test
+    void scheduledDraftAbortsCleanlyWhenLinkedInAuthorizationExpiredBeforeExecution() {
+        UUID userId = UUID.randomUUID();
+        UUID draftId = UUID.randomUUID();
+        ContentDraftRepository draftRepository = mock(ContentDraftRepository.class);
+        PublicationRepository publicationRepository = mock(PublicationRepository.class);
+        LinkedInAuthorizationRepository authorizationRepository = mock(LinkedInAuthorizationRepository.class);
+        TokenCipher tokenCipher = mock(TokenCipher.class);
+        LinkedInPublishingClient publishingClient = mock(LinkedInPublishingClient.class);
+        PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+        when(transactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
+
+        ContentDraft scheduledDraft = ContentDraft.createTextDraft(
+                AppUser.reference(userId), "Scheduled text", "NONE", null, null, NOW.minusSeconds(600));
+        scheduledDraft.setId(draftId);
+        scheduledDraft.approve(NOW.minusSeconds(500), NOW.minusSeconds(60));
+
+        when(draftRepository.findScheduledDraftIdsUpTo(anyString(), any(), any())).thenReturn(List.of(draftId));
+        when(draftRepository.findLockedById(draftId)).thenReturn(Optional.of(scheduledDraft));
+        when(publicationRepository.findByAppUser_IdAndRequestFingerprint(any(), anyString()))
+                .thenReturn(Optional.empty());
+        when(authorizationRepository.findByAppUser_Id(userId)).thenReturn(Optional.empty());
+
+        AtomicReference<Publication> savedPublication = new AtomicReference<>();
+        when(publicationRepository.saveAndFlush(any())).thenAnswer(invocation -> {
+            Publication pub = invocation.getArgument(0);
+            savedPublication.set(pub);
+            return pub;
+        });
+
+        DraftWorkflowService service = new DraftWorkflowService(
+                draftRepository,
+                publicationRepository,
+                authorizationRepository,
+                tokenCipher,
+                publishingClient,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                transactionManager);
+
+        int processed = service.processDueScheduledDrafts(Duration.ofMinutes(60), 20);
+        assertThat(processed).isEqualTo(1);
+        assertThat(scheduledDraft.getStatus()).isEqualTo(ContentDraft.STATUS_APPROVED);
+        assertThat(scheduledDraft.getScheduledAt()).isNull();
+        assertThat(savedPublication.get()).isNotNull();
+        assertThat(savedPublication.get().getStatus()).isEqualTo(Publication.STATUS_FAILED);
+        assertThat(savedPublication.get().getFailureCode()).isEqualTo("LINKEDIN_CONNECTION_REQUIRED");
+        verify(publishingClient, never()).publish(anyString(), any());
     }
 
     private ContentDraft approvedDraft(UUID draftId) {

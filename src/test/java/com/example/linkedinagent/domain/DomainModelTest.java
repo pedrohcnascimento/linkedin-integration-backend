@@ -62,6 +62,46 @@ class DomainModelTest {
     }
 
     @Test
+    void contentDraftSupportsSchedulingReschedulingCancellationAndExpirationTransitions() {
+        AppUser owner = AppUser.reference(UUID.randomUUID());
+        ContentDraft draft = ContentDraft.createTextDraft(owner, "Scheduled post", "NONE", null, null, NOW);
+
+        assertThatThrownBy(() -> draft.schedule(NOW.plusSeconds(60), NOW))
+                .isInstanceOfSatisfying(DraftWorkflowException.class, ex ->
+                        assertThat(ex.getCode()).isEqualTo("DRAFT_INVALID_STATE"));
+        assertThatThrownBy(() -> draft.approve(NOW, NOW))
+                .isInstanceOfSatisfying(DraftWorkflowException.class, ex -> {
+                    assertThat(ex.getCode()).isEqualTo("INVALID_SCHEDULE_TIME");
+                    assertThat(ex.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                });
+
+        Instant firstSlot = NOW.plusSeconds(600);
+        draft.approve(NOW, firstSlot);
+        assertThat(draft.getStatus()).isEqualTo(ContentDraft.STATUS_SCHEDULED);
+        assertThat(draft.getScheduledAt()).isEqualTo(firstSlot);
+        assertThat(draft.isDueAt(firstSlot.minusSeconds(1))).isFalse();
+        assertThat(draft.isDueAt(firstSlot)).isTrue();
+        assertThatThrownBy(draft::ensureApprovedForPublishing)
+                .isInstanceOfSatisfying(DraftWorkflowException.class, ex -> {
+                    assertThat(ex.getCode()).isEqualTo("DRAFT_SCHEDULED");
+                    assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                });
+
+        Instant secondSlot = NOW.plusSeconds(1200);
+        draft.schedule(secondSlot, NOW.plusSeconds(60));
+        assertThat(draft.getScheduledAt()).isEqualTo(secondSlot);
+
+        draft.markScheduleExpired(secondSlot.plusSeconds(7200));
+        assertThat(draft.getStatus()).isEqualTo(ContentDraft.STATUS_SCHEDULE_EXPIRED);
+        assertThat(draft.getScheduledAt()).isEqualTo(secondSlot);
+        draft.ensureApprovedForPublishing();
+
+        draft.cancelSchedule(secondSlot.plusSeconds(7300));
+        assertThat(draft.getStatus()).isEqualTo(ContentDraft.STATUS_APPROVED);
+        assertThat(draft.getScheduledAt()).isNull();
+    }
+
+    @Test
     void linkedInAuthorizationAndOAuthTransactionEvaluateExpirationBoundaries() {
         AppUser user = AppUser.createNew("person@example.com", "Person", "hash", NOW);
 

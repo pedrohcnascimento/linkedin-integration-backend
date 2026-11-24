@@ -8,6 +8,7 @@ import com.example.linkedinagent.repository.AuditEventRepository;
 import com.example.linkedinagent.repository.LinkedInAuthorizationRepository;
 import com.example.linkedinagent.repository.RateLimitStore;
 import com.example.linkedinagent.security.TokenCipher;
+import com.example.linkedinagent.service.ScheduledPublicationService;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,21 +24,24 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -56,6 +60,9 @@ class DraftResourceIntegrationTest {
 
     @Autowired
     private AuditEventRepository auditEventRepository;
+
+    @Autowired
+    private ScheduledPublicationService scheduledPublicationService;
 
     @MockitoBean
     private RateLimitStore rateLimitStore;
@@ -612,6 +619,168 @@ class DraftResourceIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
                 .andExpect(jsonPath("$.message").value("Request validation failed."));
+    }
+
+    @Test
+    void approveWithScheduleRescheduleAndCancelWorkflow() throws Exception {
+        MockHttpSession session = loginAndRegister();
+        UUID draftId = createDraft(session);
+
+        String pastSlot = Instant.now().minusSeconds(60).truncatedTo(ChronoUnit.SECONDS).toString();
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", draftId)
+                        .session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scheduledAt\":\"" + pastSlot + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_SCHEDULE_TIME"));
+
+        String beyondTokenExpiry = Instant.now().plusSeconds(7200).truncatedTo(ChronoUnit.SECONDS).toString();
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", draftId)
+                        .session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scheduledAt\":\"" + beyondTokenExpiry + "\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("LINKEDIN_TOKEN_EXPIRES_BEFORE_SCHEDULE"));
+
+        String validSlot = Instant.now().plusSeconds(900).truncatedTo(ChronoUnit.SECONDS).toString();
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", draftId)
+                        .session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scheduledAt\":\"" + validSlot + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SCHEDULED"))
+                .andExpect(jsonPath("$.scheduledAt").value(validSlot));
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-manual-while-scheduled"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DRAFT_SCHEDULED"));
+
+        String updatedSlot = Instant.now().plusSeconds(1800).truncatedTo(ChronoUnit.SECONDS).toString();
+        mockMvc.perform(put("/api/v1/drafts/{id}/schedule", draftId)
+                        .session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scheduledAt\":\"" + updatedSlot + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SCHEDULED"))
+                .andExpect(jsonPath("$.scheduledAt").value(updatedSlot));
+
+        mockMvc.perform(delete("/api/v1/drafts/{id}/schedule", draftId)
+                        .session(session).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.scheduledAt").value(nullValue()));
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/publish", draftId)
+                        .session(session).with(csrf()).header("Idempotency-Key", "test-idempotency-key-manual-after-cancel"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("PUBLISHED"));
+    }
+
+    @Test
+    void scheduledDraftWithinGraceWindowIsAutomaticallyPublishedByScheduler() throws Exception {
+        MockHttpSession session = loginAndRegister();
+        UUID draftId = createDraft(session);
+        String futureSlot = Instant.now().plusSeconds(600).truncatedTo(ChronoUnit.SECONDS).toString();
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", draftId)
+                        .session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scheduledAt\":\"" + futureSlot + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SCHEDULED"));
+
+        String dueWithinGrace = Instant.now().minusSeconds(300).truncatedTo(ChronoUnit.SECONDS).toString();
+        jdbcTemplate.update(
+                "UPDATE content_draft SET scheduled_at = ? WHERE id = ?",
+                dueWithinGrace,
+                draftId.toString());
+
+        int processed = scheduledPublicationService.publishDueDrafts();
+        assertThat(processed).isGreaterThanOrEqualTo(1);
+        verify(publishingClient, times(1)).publish(any(), any());
+
+        mockMvc.perform(get("/api/v1/drafts").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].status").value("PUBLISHED"));
+
+        mockMvc.perform(get("/api/v1/publications").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].status").value("PUBLISHED"))
+                .andExpect(jsonPath("$.content[0].externalPostId").value("urn:li:share:123"));
+    }
+
+    @Test
+    void scheduledDraftBeyondGraceWindowExpiresWithoutPublishingAndCanBeRescheduled() throws Exception {
+        MockHttpSession session = loginAndRegister();
+        UUID draftId = createDraft(session);
+        String futureSlot = Instant.now().plusSeconds(600).truncatedTo(ChronoUnit.SECONDS).toString();
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", draftId)
+                        .session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scheduledAt\":\"" + futureSlot + "\"}"))
+                .andExpect(status().isOk());
+
+        String missedBeyondGrace = Instant.now().minusSeconds(5400).truncatedTo(ChronoUnit.SECONDS).toString();
+        jdbcTemplate.update(
+                "UPDATE content_draft SET scheduled_at = ? WHERE id = ?",
+                missedBeyondGrace,
+                draftId.toString());
+
+        scheduledPublicationService.publishDueDrafts();
+        verify(publishingClient, never()).publish(any(), any());
+
+        mockMvc.perform(get("/api/v1/drafts").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].status").value("SCHEDULE_EXPIRED"))
+                .andExpect(jsonPath("$.content[0].scheduledAt").value(missedBeyondGrace));
+
+        String rescheduledSlot = Instant.now().plusSeconds(900).truncatedTo(ChronoUnit.SECONDS).toString();
+        mockMvc.perform(put("/api/v1/drafts/{id}/schedule", draftId)
+                        .session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scheduledAt\":\"" + rescheduledSlot + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SCHEDULED"))
+                .andExpect(jsonPath("$.scheduledAt").value(rescheduledSlot));
+    }
+
+    @Test
+    void scheduledDraftRevertsToApprovedAndRecordsFailureWithoutInfiniteRetryLoop() throws Exception {
+        MockHttpSession session = loginAndRegister();
+        UUID draftId = createDraft(session);
+        String futureSlot = Instant.now().plusSeconds(600).truncatedTo(ChronoUnit.SECONDS).toString();
+
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", draftId)
+                        .session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scheduledAt\":\"" + futureSlot + "\"}"))
+                .andExpect(status().isOk());
+
+        when(publishingClient.publish(any(), any()))
+                .thenThrow(new LinkedInPublishingException("LINKEDIN_RATE_LIMITED", "rate limited", false));
+
+        String dueSlot = Instant.now().minusSeconds(60).truncatedTo(ChronoUnit.SECONDS).toString();
+        jdbcTemplate.update(
+                "UPDATE content_draft SET scheduled_at = ? WHERE id = ?",
+                dueSlot,
+                draftId.toString());
+
+        scheduledPublicationService.publishDueDrafts();
+        int secondRun = scheduledPublicationService.publishDueDrafts();
+        assertThat(secondRun).isZero();
+        verify(publishingClient, times(1)).publish(any(), any());
+
+        mockMvc.perform(get("/api/v1/drafts").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].status").value("APPROVED"))
+                .andExpect(jsonPath("$.content[0].scheduledAt").value(nullValue()));
+
+        mockMvc.perform(get("/api/v1/publications").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].status").value("FAILED"))
+                .andExpect(jsonPath("$.content[0].failureCode").value("LINKEDIN_RATE_LIMITED"));
     }
 
     private void publishDraft(MockHttpSession session, UUID draftId, String idempotencyKey) throws Exception {

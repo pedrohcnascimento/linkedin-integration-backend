@@ -36,4 +36,8 @@ app:
     cors-allowed-origins: "http://localhost:5173, http://localhost:5174"
   rate-limit:
     hmac-key: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+  scheduling:
+    grace-window: "PT60M"
+    poll-interval-ms: 3600000
+    initial-delay-ms: 3600000
   base-url: "http://localhost:8080"

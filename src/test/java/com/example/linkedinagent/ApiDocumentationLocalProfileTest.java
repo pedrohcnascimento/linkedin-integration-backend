@@ -84,6 +84,7 @@ class ApiDocumentationLocalProfileTest {
         assertThat(documentedOperations)
                 .isNotEmpty()
                 .containsExactlyInAnyOrderElementsOf(runtimeOperations)
+                .contains("PUT /api/v1/drafts/{id}/schedule", "DELETE /api/v1/drafts/{id}/schedule")
                 .doesNotContain("GET /api/v1/drafts/{id}");
         assertThat(documentedPaths.keySet()).noneMatch(path -> path.startsWith("/api/v1/opportunities"));
     }
@@ -102,6 +103,9 @@ class ApiDocumentationLocalProfileTest {
                 .andExpect(jsonPath("$.components.schemas.ConnectionResponse.properties.encryptedAccessToken").doesNotExist())
                 .andExpect(jsonPath("$.components.schemas.RegisterRequest.properties.password.minLength").value(12))
                 .andExpect(jsonPath("$.components.schemas.RegisterRequest.properties.password.maxLength").value(72))
+                .andExpect(jsonPath("$.components.schemas.DraftResponse.properties.status.enum",
+                        containsInAnyOrder("DRAFT", "APPROVED", "SCHEDULED", "SCHEDULE_EXPIRED", "PUBLISHED")))
+                .andExpect(jsonPath("$.components.schemas.DraftResponse.properties.scheduledAt.type", hasItem("null")))
                 .andExpect(jsonPath("$.components.schemas.PublicationResponse.properties.status.enum",
                         containsInAnyOrder("PUBLISHING", "PUBLISHED", "FAILED", "OUTCOME_UNKNOWN")))
                 .andExpect(jsonPath("$.components.schemas.PublicationResponse.properties.draftId.type", hasItem("null")));

@@ -35,6 +35,8 @@ class RateLimitInterceptorTest {
             "POST,   /api/v1/drafts,                         draft-write",
             "PATCH,  /api/v1/drafts/abc,                     draft-write",
             "POST,   /api/v1/drafts/abc/approve,             draft-write",
+            "PUT,    /api/v1/drafts/abc/schedule,            draft-write",
+            "DELETE, /api/v1/drafts/abc/schedule,            draft-write",
             "GET,    /api/v1/drafts,                         api-read",
             "GET,    /api/v1/drafts/abc,                     api-read",
             "GET,    /api/v1/publications,                   api-read",

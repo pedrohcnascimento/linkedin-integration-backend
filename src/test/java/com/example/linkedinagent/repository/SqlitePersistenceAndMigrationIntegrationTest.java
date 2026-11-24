@@ -44,9 +44,9 @@ class SqlitePersistenceAndMigrationIntegrationTest {
     private static final Instant NOW = Instant.parse("2026-10-30T12:00:00Z");
 
     @Test
-    void flywayUpgradesPopulatedV1DatabaseToV2PreservingDataAndEnforcingCaseInsensitiveEmailAndForeignKeys(
+    void flywayUpgradesPopulatedV1DatabaseToLatestPreservingDataAndEnforcingCaseInsensitiveEmailAndForeignKeys(
             @TempDir Path tempDir) throws Exception {
-        Path dbFile = tempDir.resolve("upgrade-v1-to-v2.db");
+        Path dbFile = tempDir.resolve("upgrade-v1-to-latest.db");
         DriverManagerDataSource dataSource = new DriverManagerDataSource(
                 "jdbc:sqlite:" + dbFile.toAbsolutePath() + "?foreign_keys=on");
         dataSource.setDriverClassName("org.sqlite.JDBC");
@@ -98,11 +98,11 @@ class SqlitePersistenceAndMigrationIntegrationTest {
             }
         }
 
-        Flyway flywayV2 = Flyway.configure()
+        Flyway flywayLatest = Flyway.configure()
                 .dataSource(dataSource)
                 .locations("classpath:db/migration/sqlite")
                 .load();
-        flywayV2.migrate();
+        flywayLatest.migrate();
 
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
@@ -116,6 +116,16 @@ class SqlitePersistenceAndMigrationIntegrationTest {
                     assertThat(rs.getString("email")).isEqualTo("Legacy.User@Example.com");
                     assertThat(rs.getString("display_name")).isEqualTo("Legacy User");
                     assertThat(rs.getString("password_hash")).isEmpty();
+                }
+            }
+
+            try (PreparedStatement selectDraft = connection.prepareStatement(
+                    "SELECT status, scheduled_at FROM content_draft WHERE id = ?")) {
+                selectDraft.setString(1, draftId);
+                try (ResultSet rs = selectDraft.executeQuery()) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getString("status")).isEqualTo("APPROVED");
+                    assertThat(rs.getString("scheduled_at")).isNull();
                 }
             }
 
@@ -163,18 +173,24 @@ class SqlitePersistenceAndMigrationIntegrationTest {
     void oracleMigrationsDefineEveryEntityTableColumnAndCaseInsensitiveEmailIndex() throws Exception {
         String oracleV1 = readResource("db/migration/oracle/V1__Create_initial_schema.sql");
         String oracleV2 = readResource("db/migration/oracle/V2__Add_local_user_credentials.sql");
+        String oracleV3 = readResource("db/migration/oracle/V3__Add_draft_scheduling.sql");
         String sqliteV1 = readResource("db/migration/sqlite/V1__Create_initial_schema.sql");
         String sqliteV2 = readResource("db/migration/sqlite/V2__Add_local_user_credentials.sql");
+        String sqliteV3 = readResource("db/migration/sqlite/V3__Add_draft_scheduling.sql");
 
-        Map<String, Set<String>> oracleColumns = extractSchemaColumns(oracleV1 + "\n" + oracleV2);
-        Map<String, Set<String>> sqliteColumns = extractSchemaColumns(sqliteV1 + "\n" + sqliteV2);
+        Map<String, Set<String>> oracleColumns = extractSchemaColumns(oracleV1 + "\n" + oracleV2 + "\n" + oracleV3);
+        Map<String, Set<String>> sqliteColumns = extractSchemaColumns(sqliteV1 + "\n" + sqliteV2 + "\n" + sqliteV3);
 
         assertThat(oracleColumns).isEqualTo(sqliteColumns);
         assertThat(oracleColumns.get("app_user")).contains("password_hash");
+        assertThat(oracleColumns.get("content_draft")).contains("scheduled_at");
         assertThat(oracleV2)
                 .containsIgnoringCase("ADD password_hash VARCHAR2(255 CHAR)")
                 .containsIgnoringCase("CREATE UNIQUE INDEX uq_app_user_email_normalized")
                 .containsIgnoringCase("ON app_user(LOWER(email))");
+        assertThat(oracleV3)
+                .containsIgnoringCase("ADD scheduled_at VARCHAR2(64 CHAR)")
+                .containsIgnoringCase("CREATE INDEX idx_content_draft_scheduled");
 
         List<Class<?>> entities = List.of(
                 AppUser.class,
