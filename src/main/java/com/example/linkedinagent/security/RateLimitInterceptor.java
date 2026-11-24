@@ -68,7 +68,9 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         }
         boolean draftWrite = ("POST".equals(method) && path.equals("/api/v1/drafts"))
                 || ("PATCH".equals(method) && path.matches("/api/v1/drafts/[^/]+"))
-                || ("POST".equals(method) && path.matches("/api/v1/drafts/[^/]+/approve"));
+                || ("POST".equals(method) && path.matches("/api/v1/drafts/[^/]+/approve"))
+                || (("PUT".equals(method) || "DELETE".equals(method))
+                        && path.matches("/api/v1/drafts/[^/]+/schedule"));
         if (draftWrite) {
             return new RateLimitDecision("draft-write", authenticatedWriteLimits(request, 60, 30));
         }

@@ -1,4 +1,4 @@
-﻿spring:
+spring:
   application:
     name: linkedin-integration-backend
   profiles:
@@ -58,3 +58,8 @@ app:
   retention:
     audit-event-retention: ${AUDIT_EVENT_RETENTION:P90D}
     oauth-cleanup-interval-ms: ${OAUTH_CLEANUP_INTERVAL_MS:900000}
+  scheduling:
+    grace-window: ${SCHEDULED_PUBLISH_GRACE_WINDOW:PT60M}
+    poll-interval-ms: ${SCHEDULED_PUBLISH_POLL_INTERVAL_MS:30000}
+    initial-delay-ms: ${SCHEDULED_PUBLISH_INITIAL_DELAY_MS:30000}
+    batch-size: ${SCHEDULED_PUBLISH_BATCH_SIZE:20}

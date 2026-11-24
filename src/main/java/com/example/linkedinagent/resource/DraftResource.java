@@ -3,10 +3,12 @@ package com.example.linkedinagent.resource;
 import com.example.linkedinagent.domain.ContentDraft;
 import com.example.linkedinagent.domain.Publication;
 import com.example.linkedinagent.dto.ApiError;
+import com.example.linkedinagent.dto.DraftDtos.ApproveDraftRequest;
 import com.example.linkedinagent.dto.DraftDtos.CreateDraftRequest;
 import com.example.linkedinagent.dto.DraftDtos.DraftPageResponse;
 import com.example.linkedinagent.dto.DraftDtos.DraftResponse;
 import com.example.linkedinagent.dto.DraftDtos.EditDraftRequest;
+import com.example.linkedinagent.dto.DraftDtos.ScheduleDraftRequest;
 import com.example.linkedinagent.dto.PublicationDtos.PublicationPageResponse;
 import com.example.linkedinagent.dto.PublicationDtos.PublicationResponse;
 import com.example.linkedinagent.exception.DraftWorkflowException;
@@ -28,21 +30,24 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1")
-@Tag(name = "Drafts", description = "Criação, listagem paginada, edição, aprovação e publicação de drafts textuais.")
+@Tag(name = "Drafts", description = "Criação, listagem paginada, edição, aprovação, agendamento e publicação de drafts textuais.")
 public class DraftResource {
 
     public static final int MAX_PAGE_INDEX = 100;
@@ -69,6 +74,7 @@ public class DraftResource {
                                       "title": "Minha primeira publicação",
                                       "status": "DRAFT",
                                       "approvedAt": null,
+                                      "scheduledAt": null,
                                       "createdAt": "2026-10-30T12:00:00Z",
                                       "updatedAt": "2026-10-30T12:00:00Z"
                                     }
@@ -234,30 +240,53 @@ public class DraftResource {
     }
 
     @PostMapping("/drafts/{id}/approve")
-    @Operation(summary = "Aprovar um draft", description = "Muda o draft de DRAFT para APPROVED. Depois disso o conteúdo fica imutável e pode ser publicado.")
+    @Operation(summary = "Aprovar um draft (com agendamento opcional)",
+            description = "Muda o draft de DRAFT para APPROVED (sem corpo ou sem scheduledAt) ou para SCHEDULED (quando scheduledAt futuro é informado). Depois da aprovação o conteúdo fica imutável.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Draft aprovado e pronto para publicação.",
+            @ApiResponse(responseCode = "200", description = "Draft aprovado (ou agendado para publicação automática).",
                     content = @Content(mediaType = "application/json",
                             schema = @Schema(implementation = DraftResponse.class),
-                            examples = @ExampleObject(name = "Draft aprovado", value = """
-                                    {
-                                      "id": "5d2c1f0e-7a3b-4c9d-8e1f-2a3b4c5d6e7f",
-                                      "text": "Minha primeira publicação pelo LinkedIn Integration Backend.",
-                                      "mediaCategory": "NONE",
-                                      "originalUrl": null,
-                                      "title": "Minha primeira publicação",
-                                      "status": "APPROVED",
-                                      "approvedAt": "2026-10-30T12:00:00Z",
-                                      "createdAt": "2026-10-30T11:55:00Z",
-                                      "updatedAt": "2026-10-30T12:00:00Z"
-                                    }
-                                    """))),
-            @ApiResponse(responseCode = "400", description = "UUID inválido no caminho da requisição.",
+                            examples = {
+                                    @ExampleObject(name = "Draft aprovado manualmente", value = """
+                                            {
+                                              "id": "5d2c1f0e-7a3b-4c9d-8e1f-2a3b4c5d6e7f",
+                                              "text": "Minha primeira publicação pelo LinkedIn Integration Backend.",
+                                              "mediaCategory": "NONE",
+                                              "originalUrl": null,
+                                              "title": "Minha primeira publicação",
+                                              "status": "APPROVED",
+                                              "approvedAt": "2026-10-30T12:00:00Z",
+                                              "scheduledAt": null,
+                                              "createdAt": "2026-10-30T11:55:00Z",
+                                              "updatedAt": "2026-10-30T12:00:00Z"
+                                            }
+                                            """),
+                                    @ExampleObject(name = "Draft aprovado e agendado", value = """
+                                            {
+                                              "id": "5d2c1f0e-7a3b-4c9d-8e1f-2a3b4c5d6e7f",
+                                              "text": "Minha primeira publicação pelo LinkedIn Integration Backend.",
+                                              "mediaCategory": "NONE",
+                                              "originalUrl": null,
+                                              "title": "Minha primeira publicação",
+                                              "status": "SCHEDULED",
+                                              "approvedAt": "2026-10-30T12:00:00Z",
+                                              "scheduledAt": "2026-10-31T14:00:00Z",
+                                              "createdAt": "2026-10-30T11:55:00Z",
+                                              "updatedAt": "2026-10-30T12:00:00Z"
+                                            }
+                                            """)
+                            })),
+            @ApiResponse(responseCode = "400", description = "UUID inválido, JSON malformado ou scheduledAt não está no futuro.",
                     content = @Content(mediaType = "application/json",
                             schema = @Schema(implementation = ApiError.class),
-                            examples = @ExampleObject(name = "INVALID_REQUEST", value = """
-                                    {"code": "INVALID_REQUEST", "message": "Request validation failed."}
-                                    """))),
+                            examples = {
+                                    @ExampleObject(name = "INVALID_REQUEST", value = """
+                                            {"code": "INVALID_REQUEST", "message": "Request validation failed."}
+                                            """),
+                                    @ExampleObject(name = "INVALID_SCHEDULE_TIME", value = """
+                                            {"code": "INVALID_SCHEDULE_TIME", "message": "Scheduled publication time must be in the future."}
+                                            """)
+                            })),
             @ApiResponse(responseCode = "401", description = "Sessão local ausente ou expirada (sem corpo).", content = @Content),
             @ApiResponse(responseCode = "403", description = "Token CSRF ausente ou expirado; execute GET /api/v1/auth/csrf e tente novamente (sem corpo).", content = @Content),
             @ApiResponse(responseCode = "404", description = "Draft não encontrado para o usuário autenticado.",
@@ -266,12 +295,23 @@ public class DraftResource {
                             examples = @ExampleObject(name = "DRAFT_NOT_FOUND", value = """
                                     {"code": "DRAFT_NOT_FOUND", "message": "Draft was not found."}
                                     """))),
-            @ApiResponse(responseCode = "409", description = "O draft não está mais em DRAFT (já aprovado ou publicado).",
+            @ApiResponse(responseCode = "409", description = "O draft não está mais em DRAFT (já aprovado, agendado ou publicado).",
                     content = @Content(mediaType = "application/json",
                             schema = @Schema(implementation = ApiError.class),
                             examples = @ExampleObject(name = "DRAFT_INVALID_STATE", value = """
                                     {"code": "DRAFT_INVALID_STATE", "message": "Only a DRAFT can be approved."}
                                     """))),
+            @ApiResponse(responseCode = "422", description = "Ao agendar, exige conexão LinkedIn ativa e válida até o horário agendado.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = {
+                                    @ExampleObject(name = "LINKEDIN_CONNECTION_REQUIRED", value = """
+                                            {"code": "LINKEDIN_CONNECTION_REQUIRED", "message": "An active LinkedIn connection is required."}
+                                            """),
+                                    @ExampleObject(name = "LINKEDIN_TOKEN_EXPIRES_BEFORE_SCHEDULE", value = """
+                                            {"code": "LINKEDIN_TOKEN_EXPIRES_BEFORE_SCHEDULE", "message": "LinkedIn authorization expires before the scheduled publication time; reconnect LinkedIn first."}
+                                            """)
+                            })),
             @ApiResponse(responseCode = "429", description = "Limite local de escrita de drafts excedido (IP: 60/15min; conta/sessão: 30/15min).",
                     headers = @Header(name = "Retry-After", description = "Segundos restantes até nova tentativa.", schema = @Schema(type = "string", example = "60")),
                     content = @Content(mediaType = "application/json",
@@ -290,14 +330,121 @@ public class DraftResource {
     public DraftResponse approve(
             @AuthenticationPrincipal AppUserPrincipal user,
             @Parameter(description = "UUID real do draft em estado DRAFT retornado pelo POST ou GET /api/v1/drafts.", example = "5d2c1f0e-7a3b-4c9d-8e1f-2a3b4c5d6e7f")
+            @PathVariable UUID id,
+            @Valid @RequestBody(required = false) @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = false,
+                    content = @Content(mediaType = "application/json", examples = @ExampleObject(
+                            name = "Aprovar e agendar (opcional)",
+                            value = """
+                                    {
+                                      "scheduledAt": "2026-11-25T14:00:00Z"
+                                    }
+                                    """))) ApproveDraftRequest request) {
+        Instant scheduledAt = request != null ? request.scheduledAt() : null;
+        return DraftResponse.from(workflowService.approve(user.getId(), id, scheduledAt));
+    }
+
+    @PutMapping("/drafts/{id}/schedule")
+    @Operation(summary = "Agendar ou reagendar publicação de um draft aprovado",
+            description = "Define ou altera o horário de publicação automática (scheduledAt em UTC) de um draft em estado APPROVED, SCHEDULED ou SCHEDULE_EXPIRED.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Draft agendado ou reagendado.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = DraftResponse.class))),
+            @ApiResponse(responseCode = "400", description = "JSON malformado, scheduledAt ausente ou não está no futuro.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = {
+                                    @ExampleObject(name = "INVALID_REQUEST", value = """
+                                            {"code": "INVALID_REQUEST", "message": "Request validation failed."}
+                                            """),
+                                    @ExampleObject(name = "INVALID_SCHEDULE_TIME", value = """
+                                            {"code": "INVALID_SCHEDULE_TIME", "message": "Scheduled publication time must be in the future."}
+                                            """)
+                            })),
+            @ApiResponse(responseCode = "401", description = "Sessão local ausente ou expirada (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Token CSRF ausente ou expirado (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Draft não encontrado para o usuário autenticado.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "409", description = "Draft ainda não aprovado, já publicado ou com publicação pendente de reconciliação.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = {
+                                    @ExampleObject(name = "DRAFT_INVALID_STATE", value = """
+                                            {"code": "DRAFT_INVALID_STATE", "message": "Approve the draft before scheduling publication."}
+                                            """),
+                                    @ExampleObject(name = "PUBLICATION_OUTCOME_UNKNOWN", value = """
+                                            {"code": "PUBLICATION_OUTCOME_UNKNOWN", "message": "A previous publication attempt is unresolved; reconcile it before retrying."}
+                                            """)
+                            })),
+            @ApiResponse(responseCode = "422", description = "Conexão LinkedIn ausente, expirada ou expirando antes do horário agendado.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class),
+                            examples = {
+                                    @ExampleObject(name = "LINKEDIN_CONNECTION_REQUIRED", value = """
+                                            {"code": "LINKEDIN_CONNECTION_REQUIRED", "message": "An active LinkedIn connection is required."}
+                                            """),
+                                    @ExampleObject(name = "LINKEDIN_TOKEN_EXPIRES_BEFORE_SCHEDULE", value = """
+                                            {"code": "LINKEDIN_TOKEN_EXPIRES_BEFORE_SCHEDULE", "message": "LinkedIn authorization expires before the scheduled publication time; reconnect LinkedIn first."}
+                                            """)
+                            })),
+            @ApiResponse(responseCode = "429", description = "Limite local de escrita de drafts excedido (IP: 60/15min; conta/sessão: 30/15min).",
+                    headers = @Header(name = "Retry-After", description = "Segundos restantes até nova tentativa.", schema = @Schema(type = "string", example = "60")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "503", description = "Armazenamento de rate limiting indisponível no perfil prod (fail-closed).",
+                    headers = @Header(name = "Retry-After", description = "Segundos sugeridos antes de nova tentativa.", schema = @Schema(type = "string", example = "5")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class)))
+    })
+    public DraftResponse schedule(
+            @AuthenticationPrincipal AppUserPrincipal user,
+            @Parameter(description = "UUID real do draft aprovado/agendado.", example = "5d2c1f0e-7a3b-4c9d-8e1f-2a3b4c5d6e7f")
+            @PathVariable UUID id,
+            @Valid @RequestBody ScheduleDraftRequest request) {
+        return DraftResponse.from(workflowService.schedule(user.getId(), id, request.scheduledAt()));
+    }
+
+    @DeleteMapping("/drafts/{id}/schedule")
+    @Operation(summary = "Cancelar agendamento de um draft",
+            description = "Remove o agendamento de um draft em SCHEDULED ou SCHEDULE_EXPIRED, retornando-o para APPROVED para publicação manual ou novo agendamento.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Agendamento cancelado; draft voltou para APPROVED.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = DraftResponse.class))),
+            @ApiResponse(responseCode = "400", description = "UUID inválido no caminho da requisição.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "401", description = "Sessão local ausente ou expirada (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Token CSRF ausente ou expirado (sem corpo).", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Draft não encontrado para o usuário autenticado.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "409", description = "O draft não possui agendamento ativo/expirado ou há publicação em andamento/pendente de reconciliação.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "429", description = "Limite local de escrita de drafts excedido (IP: 60/15min; conta/sessão: 30/15min).",
+                    headers = @Header(name = "Retry-After", description = "Segundos restantes até nova tentativa.", schema = @Schema(type = "string", example = "60")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "503", description = "Armazenamento de rate limiting indisponível no perfil prod (fail-closed).",
+                    headers = @Header(name = "Retry-After", description = "Segundos sugeridos antes de nova tentativa.", schema = @Schema(type = "string", example = "5")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiError.class)))
+    })
+    public DraftResponse cancelSchedule(
+            @AuthenticationPrincipal AppUserPrincipal user,
+            @Parameter(description = "UUID real do draft agendado.", example = "5d2c1f0e-7a3b-4c9d-8e1f-2a3b4c5d6e7f")
             @PathVariable UUID id) {
-        return DraftResponse.from(workflowService.approve(user.getId(), id));
+        return DraftResponse.from(workflowService.cancelSchedule(user.getId(), id));
     }
 
     @PostMapping("/drafts/{id}/publish")
     @Operation(summary = "Publicar um draft aprovado", description = """
-            Publica no LinkedIn um draft APPROVED. Execute primeiro o fluxo OAuth do LinkedIn. Requer o header \
-            Idempotency-Key para evitar publicação duplicada.
+            Publica no LinkedIn um draft APPROVED (ou SCHEDULE_EXPIRED). Se o draft estiver em SCHEDULED, cancele \
+            primeiro o agendamento em DELETE /api/v1/drafts/{id}/schedule. Execute primeiro o fluxo OAuth do LinkedIn. \
+            Requer o header Idempotency-Key para evitar publicação duplicada.
 
             Contrato de idempotência e falhas:
             - Replay com a mesma chave depois de PUBLISHED devolve a publicação já salva, com o mesmo status 201, \
@@ -338,7 +485,7 @@ public class DraftResource {
                             examples = @ExampleObject(name = "DRAFT_NOT_FOUND", value = """
                                     {"code": "DRAFT_NOT_FOUND", "message": "Draft was not found."}
                                     """))),
-            @ApiResponse(responseCode = "409", description = "A tentativa já foi processada ou requer reconciliação antes de novo envio.",
+            @ApiResponse(responseCode = "409", description = "A tentativa já foi processada, requer reconciliação ou o draft possui agendamento ativo.",
                     content = @Content(mediaType = "application/json",
                             schema = @Schema(implementation = ApiError.class),
                             examples = {
@@ -351,9 +498,14 @@ public class DraftResource {
                                             description = "Chave nova para um draft com tentativa PUBLISHING ou OUTCOME_UNKNOWN não reconciliada.",
                                             value = """
                                                     {"code": "PUBLICATION_OUTCOME_UNKNOWN", "message": "A previous publication attempt is unresolved; reconcile it before retrying."}
+                                                    """),
+                                    @ExampleObject(name = "DRAFT_SCHEDULED",
+                                            description = "O draft está agendado para publicação automática; cancele o agendamento antes de publicar manualmente.",
+                                            value = """
+                                                    {"code": "DRAFT_SCHEDULED", "message": "Draft is scheduled for automatic publication; cancel the schedule before publishing manually."}
                                                     """)
                             })),
-            @ApiResponse(responseCode = "422", description = "Draft não está em APPROVED (inclusive draft já PUBLISHED usado com outra chave) ou conexão LinkedIn ativa ausente/expirada.",
+            @ApiResponse(responseCode = "422", description = "Draft não está em APPROVED/SCHEDULE_EXPIRED (inclusive draft já PUBLISHED usado com outra chave) ou conexão LinkedIn ativa ausente/expirada.",
                     content = @Content(mediaType = "application/json",
                             schema = @Schema(implementation = ApiError.class),
                             examples = {

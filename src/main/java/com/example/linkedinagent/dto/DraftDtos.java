@@ -3,6 +3,7 @@ package com.example.linkedinagent.dto;
 import com.example.linkedinagent.domain.ContentDraft;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.data.domain.Page;
 
@@ -47,6 +48,20 @@ public final class DraftDtos {
             String title) {
     }
 
+    @Schema(description = "Parâmetros opcionais para aprovar um draft, podendo agendar publicação automática.")
+    public record ApproveDraftRequest(
+            @Schema(description = "Instante futuro em UTC (ISO-8601) para publicação automática. Omita para apenas aprovar sem agendamento.",
+                    nullable = true, example = "2026-11-25T14:00:00Z")
+            Instant scheduledAt) {
+    }
+
+    @Schema(description = "Dados para agendar ou reagendar a publicação automática de um draft aprovado.")
+    public record ScheduleDraftRequest(
+            @NotNull
+            @Schema(description = "Instante futuro em UTC (ISO-8601) para publicação automática.", example = "2026-11-25T14:00:00Z")
+            Instant scheduledAt) {
+    }
+
     @Schema(description = "Rascunho textual pertencente ao usuário autenticado.")
     public record DraftResponse(
             @Schema(description = "UUID do draft.")
@@ -59,11 +74,13 @@ public final class DraftDtos {
             String originalUrl,
             @Schema(description = "Título opcional do draft.", nullable = true, example = "Minha primeira publicação")
             String title,
-            @Schema(description = "DRAFT: editável e aprovável. APPROVED: imutável e pronto para publicação. PUBLISHED: já publicado no LinkedIn.",
-                    allowableValues = {"DRAFT", "APPROVED", "PUBLISHED"}, example = "DRAFT")
+            @Schema(description = "DRAFT: editável e aprovável. APPROVED: imutável e pronto para publicação manual ou agendamento. SCHEDULED: agendado para publicação automática. SCHEDULE_EXPIRED: janela do agendamento expirada sem publicar; pode ser reagendado, cancelado ou publicado manualmente. PUBLISHED: já publicado no LinkedIn.",
+                    allowableValues = {"DRAFT", "APPROVED", "SCHEDULED", "SCHEDULE_EXPIRED", "PUBLISHED"}, example = "DRAFT")
             String status,
             @Schema(description = "Instante de aprovação em UTC; nulo enquanto o draft estiver em DRAFT.", nullable = true)
             Instant approvedAt,
+            @Schema(description = "Instante agendado em UTC para publicação automática; nulo quando não agendado.", nullable = true)
+            Instant scheduledAt,
             @Schema(description = "Instante de criação em UTC.")
             Instant createdAt,
             @Schema(description = "Instante da última alteração em UTC.")
@@ -78,6 +95,7 @@ public final class DraftDtos {
                     draft.getTitle(),
                     draft.getStatus(),
                     draft.getApprovedAt(),
+                    draft.getScheduledAt(),
                     draft.getCreatedAt(),
                     draft.getUpdatedAt());
         }
