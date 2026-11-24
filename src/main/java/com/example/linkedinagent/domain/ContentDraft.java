@@ -21,6 +21,8 @@ public class ContentDraft {
 
     public static final String STATUS_DRAFT = "DRAFT";
     public static final String STATUS_APPROVED = "APPROVED";
+    public static final String STATUS_SCHEDULED = "SCHEDULED";
+    public static final String STATUS_SCHEDULE_EXPIRED = "SCHEDULE_EXPIRED";
     public static final String STATUS_PUBLISHED = "PUBLISHED";
     public static final String MEDIA_NONE = "NONE";
 
@@ -50,6 +52,9 @@ public class ContentDraft {
 
     @Column(name = "approved_at", length = 64)
     private Instant approvedAt;
+
+    @Column(name = "scheduled_at", length = 64)
+    private Instant scheduledAt;
 
     @Column(name = "created_at", nullable = false, length = 64)
     private Instant createdAt;
@@ -121,16 +126,81 @@ public class ContentDraft {
     }
 
     public void approve(Instant now) {
+        approve(now, null);
+    }
+
+    public void approve(Instant now, Instant scheduledAt) {
         if (!STATUS_DRAFT.equals(this.status)) {
             throw new DraftWorkflowException("DRAFT_INVALID_STATE", "Only a DRAFT can be approved.", HttpStatus.CONFLICT);
         }
-        this.status = STATUS_APPROVED;
+        if (scheduledAt != null) {
+            validateFutureScheduleTime(scheduledAt, now);
+            this.status = STATUS_SCHEDULED;
+            this.scheduledAt = scheduledAt;
+        } else {
+            this.status = STATUS_APPROVED;
+            this.scheduledAt = null;
+        }
         this.approvedAt = now;
         this.updatedAt = now;
     }
 
+    public void schedule(Instant scheduledAt, Instant now) {
+        if (STATUS_DRAFT.equals(this.status)) {
+            throw new DraftWorkflowException(
+                    "DRAFT_INVALID_STATE", "Approve the draft before scheduling publication.", HttpStatus.CONFLICT);
+        }
+        if (!STATUS_APPROVED.equals(this.status)
+                && !STATUS_SCHEDULED.equals(this.status)
+                && !STATUS_SCHEDULE_EXPIRED.equals(this.status)) {
+            throw new DraftWorkflowException(
+                    "DRAFT_INVALID_STATE", "Only an approved or scheduled draft can be scheduled.", HttpStatus.CONFLICT);
+        }
+        validateFutureScheduleTime(scheduledAt, now);
+        this.status = STATUS_SCHEDULED;
+        this.scheduledAt = scheduledAt;
+        this.updatedAt = now;
+    }
+
+    public void cancelSchedule(Instant now) {
+        if (!STATUS_SCHEDULED.equals(this.status) && !STATUS_SCHEDULE_EXPIRED.equals(this.status)) {
+            throw new DraftWorkflowException(
+                    "DRAFT_INVALID_STATE", "Only a scheduled draft can have its schedule cancelled.", HttpStatus.CONFLICT);
+        }
+        this.status = STATUS_APPROVED;
+        this.scheduledAt = null;
+        this.updatedAt = now;
+    }
+
+    public void markScheduleExpired(Instant now) {
+        if (!STATUS_SCHEDULED.equals(this.status)) {
+            throw new DraftWorkflowException(
+                    "DRAFT_INVALID_STATE", "Only a scheduled draft can expire.", HttpStatus.CONFLICT);
+        }
+        this.status = STATUS_SCHEDULE_EXPIRED;
+        this.updatedAt = now;
+    }
+
+    public void revertScheduleAfterFailure(Instant now) {
+        this.status = STATUS_APPROVED;
+        this.scheduledAt = null;
+        this.updatedAt = now;
+    }
+
+    public boolean isDueAt(Instant now) {
+        return STATUS_SCHEDULED.equals(this.status)
+                && this.scheduledAt != null
+                && !this.scheduledAt.isAfter(now);
+    }
+
     public void ensureApprovedForPublishing() {
-        if (!STATUS_APPROVED.equals(this.status)) {
+        if (STATUS_SCHEDULED.equals(this.status)) {
+            throw new DraftWorkflowException(
+                    "DRAFT_SCHEDULED",
+                    "Draft is scheduled for automatic publication; cancel the schedule before publishing manually.",
+                    HttpStatus.CONFLICT);
+        }
+        if (!STATUS_APPROVED.equals(this.status) && !STATUS_SCHEDULE_EXPIRED.equals(this.status)) {
             throw new DraftWorkflowException(
                     "DRAFT_NOT_APPROVED", "Only an APPROVED draft can be published.", HttpStatus.UNPROCESSABLE_ENTITY);
         }
@@ -139,6 +209,15 @@ public class ContentDraft {
     public void markPublished(Instant now) {
         this.status = STATUS_PUBLISHED;
         this.updatedAt = now;
+    }
+
+    private static void validateFutureScheduleTime(Instant scheduledAt, Instant now) {
+        if (scheduledAt == null || !scheduledAt.isAfter(now)) {
+            throw new DraftWorkflowException(
+                    "INVALID_SCHEDULE_TIME",
+                    "Scheduled publication time must be in the future.",
+                    HttpStatus.BAD_REQUEST);
+        }
     }
 
     private static void validateTextOnlyMedia(String mediaCategory, String originalUrl) {
@@ -172,6 +251,8 @@ public class ContentDraft {
     public void setStatus(String status) { this.status = status; }
     public Instant getApprovedAt() { return approvedAt; }
     public void setApprovedAt(Instant approvedAt) { this.approvedAt = approvedAt; }
+    public Instant getScheduledAt() { return scheduledAt; }
+    public void setScheduledAt(Instant scheduledAt) { this.scheduledAt = scheduledAt; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
