@@ -6,7 +6,7 @@ Backend próprio, em Java/Spring Boot, para integração **autorizada** com o Li
 
 ## Status atual
 
-✅ **Passo 15 — Dockerizar e documentar a execução concluído** ([`docs/progress/STEP-15.md`](docs/progress/STEP-15.md)), em continuidade ao **Passo 14 — Segurança, LGPD técnica e observabilidade** ([`docs/progress/STEP-14.md`](docs/progress/STEP-14.md)); próxima etapa do roteiro: **Passo 16 — Revisão de portfólio e CI/CD**. **Passo 11 (oportunidades/vagas)** permanece formalmente adiado para ciclo posterior ([`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)). OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação, publicação idempotente via Posts API e histórico paginado por usuário, com contrato OpenAPI verificado automaticamente contra todas as rotas `/api/v1/**` (e desativado em `prod`), trilha de auditoria sanitizada (`audit_event`), retenção/exclusão LGPD (`DataRetentionService`), correlação `X-Request-Id`, empacotamento Docker multi-stage sem root com `HEALTHCHECK` e suíte automatizada cobrindo todas as camadas DDD. Reservas são persistidas antes da chamada externa; resultados ambíguos bloqueiam novas tentativas até reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md)). A validação de concorrência em Oracle descartável do Passo 10 permanece pendente de infraestrutura. Veja [`docs/status-atual.md`](docs/status-atual.md).
+✅ **Passo 15 — Dockerizar e documentar a execução concluído** ([`docs/progress/STEP-15.md`](docs/progress/STEP-15.md)), em continuidade ao **Passo 14 — Segurança, LGPD técnica e observabilidade** ([`docs/progress/STEP-14.md`](docs/progress/STEP-14.md)); próxima etapa do roteiro: **Passo 16 — Revisão de portfólio e CI/CD**. **Passo 11 (oportunidades/vagas)** permanece formalmente adiado para ciclo posterior ([`docs/progress/STEP-11.md`](docs/progress/STEP-11.md)). OAuth foi validado com o app no Developer Portal (`ACTIVE`). A API implementa criação, listagem paginada, edição, aprovação (com suporte a agendamento automático de publicações), reagendamento/cancelamento de agendamentos, publicação idempotente via Posts API e histórico paginado por usuário, com contrato OpenAPI verificado automaticamente contra todas as rotas `/api/v1/**` (e desativado em `prod`), trilha de auditoria sanitizada (`audit_event`), retenção/exclusão LGPD (`DataRetentionService`), correlação `X-Request-Id`, empacotamento Docker multi-stage sem root com `HEALTHCHECK` e suíte automatizada cobrindo todas as camadas DDD. Reservas são persistidas antes da chamada externa; resultados ambíguos bloqueiam novas tentativas até reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md)). A validação de concorrência em Oracle descartável do Passo 10 permanece pendente de infraestrutura. Veja [`docs/status-atual.md`](docs/status-atual.md).
 
 Acompanhe o progresso em [`docs/progress/`](docs/progress) e o roteiro, incluindo os próximos passos, em [`docs/planejamento-tecnico.md`](docs/planejamento-tecnico.md#15-roteiro-operacional-cronológico-passo-a-passo-executável).
 
@@ -37,7 +37,7 @@ Para o **estado funcional e as pendências atuais**, prevalece [`docs/status-atu
 - Token CSRF para requisições que alteram estado.
 - Conexão LinkedIn via OAuth 2.0, consulta sanitizada do estado da conexão e desconexão local. Tokens são cifrados em repouso e não são devolvidos pela API.
 - Rate limiting para autenticação, OAuth e publicação de rascunhos.
-- Rascunhos textuais: criação, listagem paginada, edição antes da aprovação, aprovação e publicação autenticada com `Idempotency-Key`.
+- Rascunhos textuais: criação, listagem paginada, edição antes da aprovação, aprovação (com agendamento opcional de data/hora para publicação automática), reagendamento/cancelamento de agendamento e publicação autenticada com `Idempotency-Key`.
 - Adaptador da Posts API para publicação textual de membro; respostas externas não são devolvidas sem sanitização.
 
 Essas funcionalidades são expostas pelos endpoints listados abaixo e cobertas por testes automatizados. O fluxo OAuth foi validado contra o app real no Developer Portal; o provedor continua sendo simulado na suíte automatizada.
@@ -77,7 +77,9 @@ Todas as rotas de aplicação usam o prefixo `/api/v1`. Rotas protegidas exigem 
 | `POST /api/v1/drafts` | Sessão + CSRF | Cria um rascunho textual |
 | `GET /api/v1/drafts?page=0&size=20` | Sessão | Lista os rascunhos do usuário; página de 0 a 50 itens |
 | `PATCH /api/v1/drafts/{id}` | Sessão + CSRF | Edita texto/título enquanto o rascunho está em `DRAFT` |
-| `POST /api/v1/drafts/{id}/approve` | Sessão + CSRF | Aprova o rascunho |
+| `POST /api/v1/drafts/{id}/approve` | Sessão + CSRF | Aprova o rascunho (e agenda publicação automática se `scheduledAt` for informado) |
+| `PUT /api/v1/drafts/{id}/schedule` | Sessão + CSRF | Agenda ou reagenda publicação automática de um rascunho aprovado |
+| `DELETE /api/v1/drafts/{id}/schedule` | Sessão + CSRF | Cancela o agendamento e retorna o rascunho para `APPROVED` |
 | `POST /api/v1/drafts/{id}/publish` | Sessão + CSRF | Publica rascunho aprovado; exige `Idempotency-Key` |
 | `GET /api/v1/publications?page=0&size=20` | Sessão | Histórico de publicações do usuário; tamanho máximo 50 |
 
@@ -218,6 +220,7 @@ O callback está configurado como `http://localhost:8080/api/v1/linkedin/oauth/c
 
 - Oportunidades ainda não têm endpoints funcionais.
 - Não há refresh token presumido — depende do que o LinkedIn efetivamente conceder para o app registrado.
+- Publicações agendadas exigem o processo backend em execução no horário configurado; se o servidor estiver desligado e reiniciar dentro da janela de tolerância (`SCHEDULED_PUBLISH_GRACE_WINDOW`, padrão `PT60M`), o envio ocorre na retomada; após essa janela, o draft muda para `SCHEDULE_EXPIRED` sem publicar em horário inadequado.
 - Falhas conhecidas são registradas como `FAILED`; resultados ambíguos ficam em `OUTCOME_UNKNOWN` ou permanecem `PUBLISHING` após interrupção. Ambos bloqueiam novo envio até reconciliação manual conforme [`docs/reconciliacao-manual-publicacoes.md`](docs/reconciliacao-manual-publicacoes.md); não existe retry automático nem endpoint de reconciliação.
 - O teste de integração `ProdProfileOracleRedisIntegrationTest` exige Docker ativo para iniciar os contêineres Oracle Free e Redis via Testcontainers (executa automaticamente no GitHub Actions).
 
