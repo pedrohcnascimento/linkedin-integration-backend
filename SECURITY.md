@@ -2,38 +2,32 @@
 
 ## Escopo
 
-Este projeto lida com credenciais OAuth de terceiros (LinkedIn) e conteúdo publicado em nome do usuário. As regras abaixo são obrigatórias e revisadas a cada etapa do roteiro (`docs/planejamento-tecnico.md`).
+Este projeto lida com credenciais OAuth 2.0 de terceiros (LinkedIn) e publicação textual autorizada em nome do membro autenticado. As regras abaixo são obrigatórias em todo ciclo de evolução do repositório (ver [`docs/PLANO_AUDITORIA_SEGURANCA.md`](docs/PLANO_AUDITORIA_SEGURANCA.md) e [`docs/status-atual.md`](docs/status-atual.md)).
 
-## Regras técnicas obrigatórias
+## Controles técnicos implementados e obrigatórios
 
-- **Nunca** versionar `client_secret`, access tokens, refresh tokens, `.env` real ou dumps de banco com dados reais
-- Senhas locais devem ser armazenadas somente como hashes BCrypt e nunca devem aparecer em respostas ou logs
-- Rotas autenticadas usam sessão HTTP; toda requisição que altera estado exige token CSRF
-- Cookies de sessão devem ser HttpOnly e, em produção, Secure sob HTTPS
-- Access tokens (e refresh tokens, se existirem) devem ser **cifrados em repouso com AES-256-GCM**, com uma chave Base64 de 32 bytes fora do banco de dados
-- Logs devem mascarar tokens, códigos OAuth e identificadores sensíveis — nenhum log deve conter um token em texto claro
-- O fluxo OAuth deve validar `state` de uso único (proteção CSRF) e usar `redirect_uri` exata, sem curingas
-- HTTPS obrigatório em produção
-- CORS restrito às origens conhecidas; CSRF habilitado para sessões baseadas em cookie ou justificativa documentada se a API usar somente bearer tokens
-- Rate limiting em login, cadastro e endpoints OAuth, além dos endpoints de publicação quando implementados. Aplicar limites por IP e, conforme a rota, por conta, sessão ou state; devolver `429` genérico com `Retry-After`. Produção deve usar Redis compartilhado com operações atômicas entre instâncias; falha do Redis deve falhar fechada com `503`, nunca desativar o limite silenciosamente. Endereços encaminhados (`X-Forwarded-For`/`Forwarded`) não são confiáveis por padrão: o proxy de borda deve preservar o IP de origem ou aplicar limite no próprio gateway.
-- Os perfis `local` e `test` usam contadores em memória somente para desenvolvimento/testes. No perfil `prod`, `RATE_LIMIT_REDIS_URL` e `RATE_LIMIT_HMAC_KEY` são obrigatórios; gere a chave HMAC em Base64 com pelo menos 32 bytes, use o mesmo valor em todas as instâncias e mantenha-o fora do repositório.
-- Erros nunca devem vazar stack traces ou detalhes internos ao cliente
-- Backups do banco devem ser cifrados
-- O usuário deve conseguir desconectar sua conta do LinkedIn a qualquer momento, removendo os tokens locais; não afirmar revogação remota sem implementá-la e confirmá-la na API oficial
+- **Proteção de segredos:** nunca versionar `client_secret`, access tokens, refresh tokens, chaves criptográficas, `.env` real ou bancos SQLite locais (`data/*.db`). O pipeline CI executa Gitleaks sobre o histórico completo.
+- **Autenticação e sessão local:** senhas armazenadas exclusivamente com BCrypt (limite validado de 72 bytes UTF-8), rotação de `JSESSIONID` no login contra *session fixation*, timeout de inatividade (`30m`) e timeout absoluto de sessão (`8h`).
+- **Cookies e CSRF:** cookies `HttpOnly` e `SameSite=Lax` (`Secure=true` e HSTS `max-age=31536000 ; includeSubDomains` no perfil `prod`); todas as rotas que alteram estado exigem token CSRF válido.
+- **Perfil padrão fail-safe (`prod`):** sem `SPRING_PROFILES_ACTIVE` explícito, a aplicação inicia em `prod` (desativando `/swagger-ui/**` e `/api-docs` e exigindo segredos de alta entropia, Oracle e Redis).
+- **Cifragem de tokens em repouso:** access tokens são cifrados com **AES-256-GCM** (`AesGcmTokenCipher`) usando chave de 32 bytes fora do banco, identificador de chave (`v1.<keyId>.<payload>`) para rotação sem downtime e `appUserId` como AAD (*Additional Authenticated Data*). Refresh tokens não são persistidos nesta versão.
+- **OAuth 2.0 seguro:** `state` de 256 bits persistido apenas por hash SHA-256, validade de 10 minutos, consumo atômico de uso único e vínculo estrito à sessão local autenticada que iniciou o fluxo; `redirect_uri` exata sem curingas; `Referrer-Policy: no-referrer`.
+- **Rate limiting fail-closed:** limites dedicados para CSRF, cadastro, login (com orçamento por `account-ip` apenas em falhas para evitar lockout DoS), OAuth, leitura (`api-read`), escrita/agendamento de drafts (`draft-write`) e publicação (`publication-write`). Em `prod`, usa scripts Lua atômicos no Redis com identificadores pseudonimizados via `HMAC-SHA256` e falha fechada (`503` + `Retry-After: 5`) se o Redis ficar indisponível. Cabeçalhos `X-Forwarded-For` só são lidos quando o endereço remoto pertence a `TRUSTED_PROXY_IPS`.
+- **Sanitização e LGPD:** respostas de erro nunca expõem stack traces ou detalhes internos (`GlobalExceptionHandler` + limite de `64 KB` por requisição); `AuditEvent` bloqueia marcadores de segredos; `DELETE /api/v1/users/me` exclui conta, tokens, drafts e publicações (`ON DELETE CASCADE`) e anonimiza eventos de auditoria (`ON DELETE SET NULL`), com retenção configurável (`AUDIT_EVENT_RETENTION`, padrão `P90D`).
 
 ## Escopo de dados coletados do LinkedIn
 
-Apenas os dados mínimos de identidade necessários para associar a autorização ao usuário local. Nenhuma coleta de dados de terceiros (recrutadores, outros membros, conexões) por scraping ou qualquer meio não documentado pela API oficial.
+Apenas os dados mínimos de identidade OpenID Connect (`sub`) necessários para associar a autorização ao usuário local e publicar via **Posts API** (`w_member_social`). Nenhuma coleta de dados de terceiros por scraping ou automação de navegador.
 
 ## Reportando uma vulnerabilidade
 
-Este é um projeto pessoal/portfólio. Para reportar uma vulnerabilidade:
+Para reportar uma vulnerabilidade de segurança neste repositório:
 
-1. Não abra uma issue pública com detalhes de exploração
-2. Descreva o problema, o impacto potencial e passos de reprodução em um canal privado (ex.: e-mail do mantenedor, a ser definido em `README.md`)
-3. Aguarde confirmação antes de divulgar publicamente
+1. **Não** abra uma issue pública com detalhes de exploração ou credenciais.
+2. Utilize o recurso privado **Security → Report a vulnerability** (*GitHub Private Vulnerability Reporting* / Security Advisories) em [`github.com/pedrohcnascimento/linkedin-integration-backend/security/advisories/new`](https://github.com/pedrohcnascimento/linkedin-integration-backend/security/advisories/new), descrevendo o componente afetado, o impacto potencial e os passos de reprodução.
+3. Aguarde confirmação e correção antes de qualquer divulgação pública.
 
 ## Fora do escopo de segurança deste projeto
 
-- Vulnerabilidades na plataforma do LinkedIn em si — reportar diretamente ao LinkedIn
-- Uso indevido por terceiros que rodem o próprio fork fora das práticas aqui descritas
+- Vulnerabilidades na plataforma do LinkedIn em si — reportar diretamente ao LinkedIn.
+- Uso indevido por terceiros que operem forks modificados fora das práticas e limites documentados neste repositório.

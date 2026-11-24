@@ -28,7 +28,8 @@ Enquanto existir qualquer linha em `publication` com `status IN ('PUBLISHING', '
 - Reutilizar uma `Idempotency-Key` em **outro** `draft_id` retorna `409 Conflict` com código `IDEMPOTENCY_KEY_CONFLICT`.
 - Repetir a **mesma** `Idempotency-Key` retorna `409 Conflict` com código `PUBLICATION_ALREADY_PROCESSED`.
 - Enviar uma **nova** `Idempotency-Key` para o mesmo `draft_id` retorna `409 Conflict` com código `PUBLICATION_IN_PROGRESS` enquanto estiver em `PUBLISHING` (menos de 2 minutos) ou `PUBLICATION_OUTCOME_UNKNOWN` quando estiver em `OUTCOME_UNKNOWN`.
-- Editar o rascunho (`PATCH /api/v1/drafts/{id}`) permanece bloqueado porque `content_draft.status` já está em `APPROVED`.
+- Agendar ou cancelar agendamento (`PUT` ou `DELETE /api/v1/drafts/{id}/schedule`) também retorna `409 Conflict` enquanto a tentativa estiver em `PUBLISHING` ou `OUTCOME_UNKNOWN`.
+- Editar o rascunho (`PATCH /api/v1/drafts/{id}`) permanece bloqueado porque `content_draft.status` já saiu de `DRAFT`.
 
 ---
 

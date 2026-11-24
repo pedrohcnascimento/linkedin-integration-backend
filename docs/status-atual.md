@@ -1,73 +1,40 @@
 # Status atual do projeto
 
 **Atualizado em:** 24/11/2026
-**Etapa atual:** Passo 15 concluído + agendamento de publicação de drafts implementado; próxima etapa do roteiro: **Passo 16 — Revisão de portfólio e CI/CD** (Passo 11 adiado para ciclo posterior; perfil `prod` coberto por `ProdProfileOracleRedisIntegrationTest` com Testcontainers)
-**Referências:** [`docs/progress/STEP-15.md`](progress/STEP-15.md), [`docs/progress/STEP-14.md`](progress/STEP-14.md), [`docs/PLANO_AUDITORIA_SEGURANCA.md`](PLANO_AUDITORIA_SEGURANCA.md), [`docs/progress/STEP-13.md`](progress/STEP-13.md), [`docs/progress/STEP-12.md`](progress/STEP-12.md), [`docs/progress/STEP-11.md`](progress/STEP-11.md), [`docs/progress/STEP-10.md`](progress/STEP-10.md), [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md) e o [plano da próxima release](planejamento-tecnico.md#plano-proposto-para-a-próxima-release)
+**Etapa atual:** **Passo 16 — Revisão de portfólio e CI/CD concluído** (ciclo v1 encerrado; Passo 11 formalmente adiado para ciclo pós-v1)
+**Referências:** [`docs/progress/STEP-16.md`](progress/STEP-16.md), [`docs/progress/STEP-15b.md`](progress/STEP-15b.md), [`docs/progress/STEP-15.md`](progress/STEP-15.md), [`docs/progress/STEP-14.md`](progress/STEP-14.md), [`docs/PLANO_AUDITORIA_SEGURANCA.md`](PLANO_AUDITORIA_SEGURANCA.md) e [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md)
 
-Este documento consolida o estado vigente observado no código e na configuração do projeto. Os relatórios em `docs/progress/` registram decisões e validações do momento em que foram escritos; não são a fonte para pendências atuais.
+Este documento consolida o estado vigente observado no código, na suíte automatizada e no pipeline CI/CD do projeto. Os relatórios em `docs/progress/` registram decisões e validações de cada etapa.
 
-## Implementado
+## Implementado e verificado na v1
 
-- Cadastro de usuários locais, autenticação por sessão, consulta do usuário autenticado, logout e proteção CSRF.
-- OAuth LinkedIn: início, callback com `state` de uso único, consulta sanitizada da conexão, desconexão local e tokens cifrados em repouso. A documentação existente registra smoke test com o aplicativo do Developer Portal (`ACTIVE`); a suíte automatizada simula o provedor.
-- No perfil local, a chave de cifragem é validada ao iniciar OAuth, não no startup da aplicação. O `state` é consumido antes das chamadas externas; falhas posteriores exigem iniciar novo fluxo.
-- Origens CORS são normalizadas com trim e validadas como origens HTTP/HTTPS exatas; wildcard e URLs que não sejam origem são rejeitados.
-- Rate limiting de autenticação, OAuth e escrita/agendamento/publicação de drafts.
-- Persistência local SQLite e perfil `prod` configurado para Oracle, com migrations Flyway específicas (`V1`, `V2`, `V3`) e Hibernate em `ddl-auto=validate`.
-- Adaptador de publicação textual via Posts API, configurável por versão, e fluxo de drafts com criação, listagem paginada, edição antes de aprovação, aprovação (com agendamento opcional via `scheduledAt`), reagendamento (`PUT /api/v1/drafts/{id}/schedule`), cancelamento de agendamento (`DELETE /api/v1/drafts/{id}/schedule`) e publicação autenticada.
-- Publicação agendada via `ScheduledPublicationService`: verifica periodicamente drafts em `SCHEDULED` cujo `scheduledAt` já venceu; se estiver dentro da janela de tolerância (`app.scheduling.grace-window`, padrão `PT60M`), reserva e publica com chave idempotente determinística; se ultrapassar a janela (por exemplo, servidor desligado no horário agendado), marca o draft como `SCHEDULE_EXPIRED` sem publicar fora de hora, permitindo reagendamento, cancelamento ou envio manual.
-- Publicação manual exige `Idempotency-Key`; replay de publicação já concluída retorna a publicação existente sem chamar novamente o LinkedIn. O contrato HTTP atual responde `201` também no replay.
-- Histórico `GET /api/v1/publications` é paginado, ordenado por `createdAt` e UUID descendentes, limitado ao usuário autenticado e a 50 itens por página. Pode incluir publicações `PUBLISHED`, `FAILED`, `PUBLISHING` ou `OUTCOME_UNKNOWN`.
-- Falhas conhecidas são registradas como `FAILED`; repetição da mesma chave retorna `409` sem nova chamada ao LinkedIn. Uma colisão de unicidade no registro inicial também é convertida para conflito antes da chamada externa. Em execuções agendadas, falhas conhecidas registram `FAILED` no histórico e revertem o draft de `SCHEDULED` para `APPROVED` para evitar loop infinito de retentativas.
-- A reserva `PUBLISHING` é confirmada em transação antes da chamada ao LinkedIn. Ela continua bloqueando tentativas se o processo cair antes de finalizar.
-- Falha de transporte, respostas HTTP 408/409/5xx ou resposta de sucesso sem `x-restli-id` são tratadas como `OUTCOME_UNKNOWN`; a mesma chave e novas chaves para o mesmo draft são bloqueadas até reconciliação manual.
-- A reserva usa lock pessimista no draft para impedir que chaves diferentes iniciem publicação concorrente do mesmo draft.
-- Testes HTTP cobrem isolamento e paginação do histórico, agendamento/reagendamento/cancelamento/expiração de janela, falha persistida, reserva `PUBLISHING` interrompida, reconciliação manual (tanto para `PUBLISHED` quanto para `FAILED`/`RECONCILED_NOT_PUBLISHED`, com trilha em `audit_event`) e replay impedido. O teste de colisão usa repositório simulado; concorrência no banco real continua sem validação.
-- O OpenAPI local documenta o contrato completo de todas as 17 operações `/api/v1/**` implementadas (`AuthResource`, `POST /api/v1/auth/logout` via `OpenApiConfig`, `LinkedInOAuthResource` e `DraftResource`), usando um único record `ApiError` compartilhado em `dto`, validando paridade de rotas em `ApiDocumentationLocalProfileTest` e mantendo `/api-docs` e `/swagger-ui/**` explicitamente desativados no perfil `prod`.
-- A organização de pacotes foi refatorada em 30/10/2026 para uma arquitetura em camadas orientada a DDD (`client`, `config`, `domain`, `dto`, `exception`, `repository`, `resource`, `security`, `service`), eliminando pacotes vazios e wrappers intermediários redundantes sem alterar rotas, payloads ou regras de negócio.
-- Suíte automatizada cobrindo todas as camadas DDD: invariantes do domínio, mapeamento de DTOs, `MockRestServiceServer` para OAuth e Posts API, cifragem AES-256-GCM, stores de rate limit (memória e script Lua Redis fail-closed), serviços de aplicação, upgrade Flyway `V1 -> V3` sobre banco SQLite populado com `PRAGMA foreign_keys = ON`, paridade de colunas SQLite/Oracle/JPA, rotação de sessão contra session fixation e paridade completa do OpenAPI (ver [`docs/progress/STEP-13.md`](progress/STEP-13.md) e [`docs/progress/STEP-14.md`](progress/STEP-14.md)).
-- Segurança, LGPD técnica e observabilidade aplicadas conforme [`docs/PLANO_AUDITORIA_SEGURANCA.md`](docs/PLANO_AUDITORIA_SEGURANCA.md): trilha de auditoria sanitizada (`AuditService` + `AuditEvent.record` com bloqueio de marcadores secretos), retenção/expurgo de transações OAuth expiradas/consumidas e rotina de exclusão local de conta/tokens (`DataRetentionService`), correlação de requisição `X-Request-Id` validada contra CRLF + MDC `requestId`, headers `Referrer-Policy: no-referrer` e `Permissions-Policy`, logs operacionais com `latencyMs` sem dados sensíveis, handler fallback sanitizado `500 INTERNAL_ERROR` e rate limiting estendido às rotas de escrita e agendamento de drafts (`POST /api/v1/drafts`, `PATCH /api/v1/drafts/{id}`, `POST /api/v1/drafts/{id}/approve`, `PUT /api/v1/drafts/{id}/schedule`, `DELETE /api/v1/drafts/{id}/schedule`) ignorando cabeçalhos `X-Forwarded-For`/`Forwarded` não confiáveis.
+- **Identidade local e segurança de sessão:** cadastro, login por sessão com rotação contra *session fixation*, consulta `/users/me`, logout (`204`), exclusão LGPD (`DELETE /api/v1/users/me`), proteção CSRF e timeouts de sessão (`30m` inatividade / `8h` absoluto).
+- **OAuth 2.0 LinkedIn:** início autenticado, callback vinculado à sessão iniciadora com `state` de uso único (hash SHA-256), consulta sanitizada da conexão, desconexão local e cifragem AES-256-GCM em repouso com AAD por usuário e suporte a rotação de chaves (`keyId`).
+- **Segurança de borda e Rate Limiting:** origens CORS HTTP/HTTPS exatas (rejeitando `*` e URLs com caminho), cabeçalhos HSTS (`prod`), `Referrer-Policy: no-referrer` e `Permissions-Policy`, limite de payload de `64 KB` e rate limiting fail-closed em memória (`local`/`test`) ou Redis atômico via Lua + HMAC-SHA256 (`prod`), respeitando `TRUSTED_PROXY_IPS`.
+- **Persistência SQLite e Oracle:** migrations Flyway `V1`–`V3` em paridade para `sqlite` e `oracle` com Hibernate `ddl-auto=validate`, testadas em banco limpo, em upgrade (`V1 -> V3`) e contra contêineres reais Oracle Free 23 + Redis 7.4 via Testcontainers (`ProdProfileOracleRedisIntegrationTest`).
+- **Fluxo completo de rascunhos, agendamento e publicação idempotente:** criação, listagem paginada, edição em `DRAFT`, aprovação manual ou com agendamento (`scheduledAt`), reagendamento (`PUT /api/v1/drafts/{id}/schedule`), cancelamento (`DELETE /api/v1/drafts/{id}/schedule`), publicação automática via `ScheduledPublicationService` (janela `PT60M` e estado `SCHEDULE_EXPIRED` fora da janela), publicação manual com `Idempotency-Key` e histórico paginado (`GET /api/v1/publications`).
+- **Concorrência e prevenção de duplicatas:** reserva `PUBLISHING` em transação `REQUIRES_NEW` com lock pessimista antes da chamada externa; concorrência multi-thread validada para mesma chave, chaves distintas e varreduras simultâneas do agendador em `PublicationConcurrencyIntegrationTest` (SQLite) e `ProdProfileOracleRedisIntegrationTest` (Oracle). Resultados ambíguos entram em `OUTCOME_UNKNOWN` e bloqueiam novas tentativas até reconciliação manual.
+- **Contrato OpenAPI e Observabilidade:** todas as 17 operações `/api/v1/**` verificadas automaticamente por `ApiDocumentationLocalProfileTest` (e ocultadas com `404` no perfil `prod`), correlação `X-Request-Id` no MDC e trilha `audit_event` sanitizada.
+- **Conteinerização e CI/CD:** `Dockerfile` multi-stage não-root com `HEALTHCHECK`, `docker-compose.yml` e pipeline `.github/workflows/security-ci.yml` executando testes unitários/concorrência/Testcontainers, Docker smoke test, Gitleaks, CodeQL e OWASP Dependency-Check, além de Dependabot semanal.
 
-## Limites funcionais atuais
+## Limites funcionais deliberados da v1
 
-- Apenas drafts textuais são aceitos; mídia e artigos são rejeitados.
-- Não há endpoints de oportunidades; o Passo 11 foi formalmente adiado para implementação posterior à estabilização da v1 (ver [`docs/progress/STEP-11.md`](progress/STEP-11.md)).
-- Publicações agendadas dependem de a aplicação estar rodando; atrasos dentro da janela de tolerância (`PT60M`) são enviados automaticamente, enquanto atrasos maiores mudam o draft para `SCHEDULE_EXPIRED`.
-- Falha conhecida do LinkedIn é registrada como `FAILED`. A mesma chave após falha retorna conflito; não há retry automático. Resultado externo ambíguo é salvo como `OUTCOME_UNKNOWN` e bloqueia qualquer nova chave para o draft. A reconciliação é manual (ver [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md)); não há endpoint administrativo.
-- Um registro `PUBLISHING` remanescente pode indicar chamada em curso ou interrupção do processo; novas tentativas são bloqueadas e é necessário seguir o [procedimento de reconciliação manual](reconciliacao-manual-publicacoes.md) após conferir o perfil no LinkedIn antes de qualquer reenvio.
-- A publicação imediata é feita pelo fluxo de `POST /api/v1/drafts/{id}/publish`; não existe endpoint autônomo de publicações nem consulta individual `GET /api/v1/drafts/{id}`.
-- A validação tardia de `TOKEN_ENCRYPTION_KEY` é intencional no perfil local para permitir iniciar a aplicação antes de configurar OAuth; inicie o fluxo somente após configurar a chave Base64 válida de 32 bytes. Logs e respostas não devem revelar o valor.
+- Apenas drafts textuais de membro são aceitos; mídia, artigos e páginas de organização não fazem parte da v1.
+- O Passo 11 (oportunidades locais e fontes externas autorizadas de vagas) permanece formalmente adiado para ciclo futuro (ver [`docs/progress/STEP-11.md`](progress/STEP-11.md) e [`docs/planejamento-fontes-vagas.md`](planejamento-fontes-vagas.md)).
+- Publicações agendadas exigem o processo backend em execução; atrasos além de `SCHEDULED_PUBLISH_GRACE_WINDOW` (`PT60M`) transicionam o draft para `SCHEDULE_EXPIRED` sem postar fora de hora.
+- Reconciliação de tentativas `PUBLISHING` interrompidas ou `OUTCOME_UNKNOWN` permanece manual via banco segundo [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md), pois o LinkedIn não concede leitura de feed (`r_member_social`) a apps self-serve.
 
-## Pendências e lacunas confirmadas
+## Checklist operacional para deploy público / produção
 
-1. Executar testes de concorrência multi-thread com a mesma chave e chaves diferentes contra a instância Oracle de homologação. As migrations Oracle (`V1`/`V2`/`V3`), a validação Hibernate (`ddl-auto=validate`), a unicidade case-insensitive de e-mail, o fluxo de publicação idempotente e o rate limiting em Redis estão cobertos por `ProdProfileOracleRedisIntegrationTest` (Testcontainers, executado automaticamente quando há Docker disponível, como no GitHub Actions).
-2. Executar o Passo 16 (Revisão final de portfólio e CI/CD), confirmando a chave `NVD_API_KEY` no GitHub Actions para o OWASP Dependency-Check e o job `docker-smoke`. Os Passos 12 ([`docs/progress/STEP-12.md`](progress/STEP-12.md)), 13 ([`docs/progress/STEP-13.md`](progress/STEP-13.md)), 14 ([`docs/progress/STEP-14.md`](progress/STEP-14.md)) e 15 ([`docs/progress/STEP-15.md`](progress/STEP-15.md)), além do procedimento de reconciliação manual ([`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md)), foram concluídos.
-3. Revalidar a versão e o payload da Posts API em documentação oficial; a matriz registra verificação em 22/09/2026 e a configuração atual usa `Linkedin-Version: 202609`.
-4. Validar com JDK 21 no ambiente-alvo e, antes de exposição pública, validar Redis compartilhado e o tratamento de IP de origem atrás do proxy confiável.
-5. **Adiado para ciclo posterior (Passo 11):** oportunidades locais e integração com fontes externas autorizadas de vagas não serão feitas neste momento e ficam pós-estabilização da release atual (ver [`docs/progress/STEP-11.md`](progress/STEP-11.md) e [`docs/planejamento-fontes-vagas.md`](planejamento-fontes-vagas.md)).
+Os itens abaixo dependem exclusivamente do ambiente externo de hospedagem (não de código pendente no repositório):
 
-Os itens 1–4 são trabalho de confiabilidade/validação e não devem ser descritos como concluídos. O item 5 depende de priorização de produto. A existência de entidades ou tabelas preliminares não significa que oportunidades estejam disponíveis.
-
-## Plano proposto para a próxima release
-
-**Objetivo de release proposto:** tornar o fluxo de publicação textual observável e confiável, sem ampliar para mídia ou oportunidades. Este recorte é uma proposta baseada nas lacunas imediatas do código, não uma decisão confirmada de produto.
-
-1. **Fechar o contrato de idempotência e falhas.** Concluído em SQLite/MockMvc em 30/10/2026: política implementada e testada para sucesso, replay, falha conhecida, resultado ambíguo (`OUTCOME_UNKNOWN`), reserva `PUBLISHING` interrompida e reconciliação manual documentada em [`docs/reconciliacao-manual-publicacoes.md`](reconciliacao-manual-publicacoes.md). Resta a validação equivalente em Oracle (itens 2 e 3).
-2. **Validar o banco suportado.** Oracle é o destino confirmado para `prod`; `ProdProfileOracleRedisIntegrationTest` executa migrations, validação Hibernate e operações de publicação em contêineres descartáveis Oracle Free e Redis. As dependências PostgreSQL antigas foram removidas do `pom.xml`.
-3. **Demonstrar concorrência e persistência.** Criar testes concorrentes para a mesma chave e chaves diferentes em Oracle; verificar lock pessimista, unicidade e estados parciais.
-4. **Completar o contrato do histórico.** Concluído no OpenAPI em 30/10/2026: schemas, exemplos, `OUTCOME_UNKNOWN` e `draftId` nulo após remoção do draft estão documentados e cobertos por teste de contrato.
-5. **Executar a verificação de release.** Rodar build e suíte completa com JDK 21, revalidar a versão/payload da Posts API em documentação oficial, verificar OpenAPI, rate limiting/Redis e origem de proxy no ambiente suportado; atualizar README, limitações e instruções com resultados reproduzíveis.
-
-**Fora deste recorte:** uploads de mídia/artigos, oportunidades, Docker e automações de candidatura. Só incluir após decisão explícita e atualização do escopo da release.
+1. **Segredo `NVD_API_KEY` no GitHub:** cadastrar chave gratuita da NVD nos *Actions secrets* do repositório para habilitar a varredura completa do OWASP Dependency-Check nas execuções agendadas e PRs.
+2. **Homologação de borda em nuvem (`prod`):** validar conectividade com a instância Oracle e o Redis gerenciado (TLS `rediss://`) do ambiente-alvo e configurar `TRUSTED_PROXY_IPS` com os CIDRs do reverse proxy/load balancer antes de abertura pública.
+3. **Manutenção periódica da `Linkedin-Version`:** revisar semestralmente a versão configurada (`LINKEDIN_API_VERSION`, atualmente `202609`) frente ao calendário oficial de versões mensais da Posts API (suporte mínimo de 1 ano por versão).
 
 ## Precedência documental
 
-1. **Estado vigente e pendências:** este documento; o README resume o estado para usuários.
-2. **Fatos e capacidades do LinkedIn:** [`docs/linkedin-capability-matrix.md`](linkedin-capability-matrix.md).
-3. **Arquitetura e requisitos planejados:** [`docs/planejamento-tecnico.md`](planejamento-tecnico.md); o planejamento não comprova implementação.
-4. **Histórico de execução:** [`docs/progress/`](progress/).
-
-## Decisões anteriores resolvidas
-
-- A pendência do titular da licença MIT foi resolvida; ver `LICENSE`.
-- A decisão é usar Posts API (`POST /rest/posts`), em vez da UGC Post API legada; ver [`docs/linkedin-capability-matrix.md`](linkedin-capability-matrix.md).
+1. **Estado vigente e checklist operacional:** este documento; o [`README.md`](../README.md) apresenta a visão geral de uso e arquitetura.
+2. **Fatos e capacidades da API do LinkedIn:** [`docs/linkedin-capability-matrix.md`](linkedin-capability-matrix.md).
+3. **Arquitetura e histórico de planejamento:** [`docs/planejamento-tecnico.md`](planejamento-tecnico.md).
+4. **Registros históricos por etapa:** [`docs/progress/`](progress/).

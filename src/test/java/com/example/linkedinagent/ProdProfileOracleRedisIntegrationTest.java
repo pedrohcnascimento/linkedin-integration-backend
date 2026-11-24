@@ -3,10 +3,13 @@ package com.example.linkedinagent;
 import com.example.linkedinagent.client.LinkedInPublishingClient;
 import com.example.linkedinagent.domain.AppUser;
 import com.example.linkedinagent.domain.LinkedInAuthorization;
+import com.example.linkedinagent.domain.Publication;
 import com.example.linkedinagent.domain.PublicationResult;
+import com.example.linkedinagent.exception.DraftWorkflowException;
 import com.example.linkedinagent.repository.AppUserRepository;
 import com.example.linkedinagent.repository.LinkedInAuthorizationRepository;
 import com.example.linkedinagent.security.TokenCipher;
+import com.example.linkedinagent.service.DraftWorkflowService;
 import com.jayway.jsonpath.JsonPath;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
@@ -31,7 +34,16 @@ import org.testcontainers.oracle.OracleContainer;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -47,9 +59,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Executa o perfil {@code prod} real contra Oracle e Redis descartáveis (Testcontainers):
- * aplica as migrations Flyway Oracle, valida o schema com Hibernate ({@code ddl-auto=validate}),
- * percorre o fluxo cadastro → login → draft → aprovação → publicação idempotente e confirma que
- * o rate limiting usa o Redis. É ignorado automaticamente quando não há Docker disponível.
+ * aplica as migrations Flyway Oracle (V1..V3), valida o schema com Hibernate ({@code ddl-auto=validate}),
+ * percorre o fluxo cadastro → login → draft → aprovação → publicação idempotente, valida concorrência
+ * multi-thread com lock pessimista e unicidade em Oracle, e confirma que o rate limiting usa o Redis.
+ * É ignorado automaticamente quando não há Docker disponível.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -113,6 +126,9 @@ class ProdProfileOracleRedisIntegrationTest {
     private TokenCipher tokenCipher;
 
     @Autowired
+    private DraftWorkflowService draftWorkflowService;
+
+    @Autowired
     private StringRedisTemplate redisTemplate;
 
     @MockitoBean
@@ -121,22 +137,13 @@ class ProdProfileOracleRedisIntegrationTest {
     @Test
     void oracleMigrationsAndHibernateValidationSupportTheFullPublicationFlowWithRedisRateLimiting() throws Exception {
         assertThat(flyway.info().applied())
-                .hasSizeGreaterThanOrEqualTo(2);
+                .hasSizeGreaterThanOrEqualTo(3);
 
         String email = UUID.randomUUID() + "@example.com";
         MockHttpSession session = registerAndLogin(email);
         UUID userId = appUserRepository.findByEmail(email).orElseThrow().getId();
 
-        Instant now = Instant.now();
-        LinkedInAuthorization authorization = LinkedInAuthorization.createForUser(AppUser.reference(userId), now);
-        authorization.refreshTokens(
-                "member-123",
-                tokenCipher.encrypt("access-token", userId.toString()),
-                null,
-                "openid profile w_member_social",
-                now.plusSeconds(3600),
-                now);
-        authorizationRepository.saveAndFlush(authorization);
+        authorizeLinkedIn(userId);
         when(publishingClient.publish(any(), any())).thenReturn(new PublicationResult("urn:li:share:oracle-1"));
 
         UUID draftId = createDraft(session);
@@ -162,6 +169,37 @@ class ProdProfileOracleRedisIntegrationTest {
     }
 
     @Test
+    void oraclePreventsDuplicateExternalPostsUnderConcurrentSameKeyAndDifferentKeys() throws Exception {
+        String email = UUID.randomUUID() + "@example.com";
+        MockHttpSession session = registerAndLogin(email);
+        UUID userId = appUserRepository.findByEmail(email).orElseThrow().getId();
+        authorizeLinkedIn(userId);
+
+        AtomicInteger externalCalls = new AtomicInteger();
+        when(publishingClient.publish(any(), any())).thenAnswer(invocation -> {
+            int callNumber = externalCalls.incrementAndGet();
+            Thread.sleep(50);
+            return new PublicationResult("urn:li:share:oracle-concurrent-" + callNumber);
+        });
+
+        // 1) Concorrência com a MESMA Idempotency-Key sobre o mesmo draft aprovado
+        UUID sameKeyDraftId = createDraft(session);
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", sameKeyDraftId).session(session).with(csrf()))
+                .andExpect(status().isOk());
+
+        runConcurrentPublishAttempts(userId, sameKeyDraftId, index -> "test-idempotency-key-oracle-same");
+        assertThat(externalCalls.get()).isEqualTo(1);
+
+        // 2) Concorrência com CHAVES DIFERENTES sobre o mesmo draft aprovado (lock pessimista Oracle)
+        UUID diffKeyDraftId = createDraft(session);
+        mockMvc.perform(post("/api/v1/drafts/{id}/approve", diffKeyDraftId).session(session).with(csrf()))
+                .andExpect(status().isOk());
+
+        runConcurrentPublishAttempts(userId, diffKeyDraftId, index -> "test-idempotency-key-oracle-diff-" + index);
+        assertThat(externalCalls.get()).isEqualTo(2);
+    }
+
+    @Test
     void oracleEnforcesCaseInsensitiveUniqueEmail() {
         String now = Instant.now().toString();
         jdbcTemplate.update("""
@@ -174,6 +212,62 @@ class ProdProfileOracleRedisIntegrationTest {
                 VALUES (?, ?, 'Duplicate', 'hash', 'ACTIVE', ?, ?)
                 """, UUID.randomUUID().toString(), "case.user@example.com", now, now))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private void runConcurrentPublishAttempts(
+            UUID userId,
+            UUID draftId,
+            java.util.function.IntFunction<String> keyFactory) throws Exception {
+        int threads = 6;
+        CountDownLatch ready = new CountDownLatch(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        try {
+            List<Future<Publication>> futures = new ArrayList<>();
+            for (int index = 0; index < threads; index++) {
+                String key = keyFactory.apply(index);
+                Callable<Publication> task = () -> {
+                    ready.countDown();
+                    if (!start.await(10, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Timed out waiting for concurrency barrier.");
+                    }
+                    return draftWorkflowService.publish(userId, draftId, key);
+                };
+                futures.add(pool.submit(task));
+            }
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+
+            int publishedResponses = 0;
+            int controlledRejections = 0;
+            for (Future<Publication> future : futures) {
+                try {
+                    Publication result = future.get(15, TimeUnit.SECONDS);
+                    assertThat(result.getStatus()).isEqualTo(Publication.STATUS_PUBLISHED);
+                    publishedResponses++;
+                } catch (java.util.concurrent.ExecutionException ex) {
+                    assertThat(ex.getCause()).isInstanceOf(DraftWorkflowException.class);
+                    controlledRejections++;
+                }
+            }
+            assertThat(publishedResponses).isGreaterThanOrEqualTo(1);
+            assertThat(publishedResponses + controlledRejections).isEqualTo(threads);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    private void authorizeLinkedIn(UUID userId) {
+        Instant now = Instant.now();
+        LinkedInAuthorization authorization = LinkedInAuthorization.createForUser(AppUser.reference(userId), now);
+        authorization.refreshTokens(
+                "member-123",
+                tokenCipher.encrypt("access-token", userId.toString()),
+                null,
+                "openid profile w_member_social",
+                now.plusSeconds(3600),
+                now);
+        authorizationRepository.saveAndFlush(authorization);
     }
 
     private MockHttpSession registerAndLogin(String email) throws Exception {

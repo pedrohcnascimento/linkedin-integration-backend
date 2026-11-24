@@ -272,16 +272,13 @@ Banco com controle de acesso por usuário, backups cifrados. Documentar quais da
 
 ## 12. Persistência local e perfil de produção
 
-O perfil `local` usa SQLite. O `application-prod.yml` atual seleciona Oracle, usa `OracleDialect`, migration Flyway em `db/migration/oracle` e `ddl-auto=validate`. O Maven também declara driver e módulo Flyway para PostgreSQL, mas isso não configura PostgreSQL como perfil de produção: não há migration PostgreSQL nem `PostgreSqlProfileIntegrationTest` no código atual. A configuração Oracle tampouco tem teste de integração Oracle no repositório.
+O perfil `local` e o perfil `test` usam SQLite (`V1`–`V3` em `db/migration/sqlite`). **Decisão arquitetural consolidada (Passos 14 a 16):** o banco formalmente suportado para o perfil `prod` é o **Oracle** (`OracleDialect`, driver `ojdbc11`, `flyway-database-oracle`, migrations `V1`–`V3` em `db/migration/oracle` e `ddl-auto=validate`). As dependências experimentais de PostgreSQL presentes no esqueleto inicial foram removidas do `pom.xml` para eliminar ambiguidade de escopo; não se declara suporte a PostgreSQL nesta versão.
 
-Antes de considerar qualquer banco pronto para produção:
-
-1. Confirmar qual banco é o destino aprovado; hoje a configuração `prod` aponta para Oracle, mas a dependência PostgreSQL e o planejamento histórico de migração criam ambiguidade.
-2. Em banco descartável da mesma tecnologia e versão compatível com o destino, testar migration em banco vazio, validação Hibernate e operações JPA de usuário, autorização, OAuth e publicação.
-3. Verificar constraints, transações e concorrência da idempotência, pois a implementação não pode assumir o comportamento do SQLite como prova de compatibilidade com Oracle ou PostgreSQL.
-4. Manter credenciais fora do repositório e aplicar migrations somente com conta autorizada e plano de rollback/recuperação adequado.
-
-Se o destino escolhido for PostgreSQL, isso exige alinhar configuração, dialeto, migrations e testes antes de declarar suporte; as dependências Maven sozinhas não são evidência. Não executar testes que gravam dados em banco produtivo.
+A validação automatizada do banco de produção ocorre em `ProdProfileOracleRedisIntegrationTest` (Testcontainers com Oracle Free 23 e Redis 7.4, executado no pipeline CI):
+1. Aplica as migrations Oracle (`V1`–`V3`) sobre banco vazio e valida o schema com Hibernate (`ddl-auto=validate`).
+2. Verifica a unicidade case-insensitive de e-mail (`LOWER(email)`), o fluxo completo de autenticação, aprovação e publicação idempotente, e a gravação de buckets de rate limit no Redis.
+3. Exercita concorrência multi-thread com a mesma `Idempotency-Key` e com chaves distintas sobre o mesmo draft aprovado, comprovando que o lock pessimista e a constraint única impedem chamadas externas duplicadas ao LinkedIn.
+4. Credenciais permanecem estritamente fora do repositório e nenhum teste grava em banco produtivo.
 
 ## 13. Configuração por ambiente
 
@@ -444,11 +441,12 @@ O agente **não deve avançar automaticamente** quando um teste falhar, uma migr
 **Entregue:** revisão sistemática guiada por `docs/PLANO_AUDITORIA_SEGURANCA.md`; correção do escopo do `RateLimitInterceptor` (`WebConfig`) para cobrir escrita de rascunhos (`POST /api/v1/drafts`, `PATCH /api/v1/drafts/{id}`, `POST /api/v1/drafts/{id}/approve`) além de publicação, login, cadastro e OAuth, ignorando headers `X-Forwarded-For`/`Forwarded` não confiáveis (`RATE-01`, `RATE-03`); implementação de `AuditEvent.record(...)` com bloqueio de marcadores secretos e `AuditService` registrando eventos sanitizados (`USER_REGISTERED`, `LINKEDIN_OAUTH_STARTED`, `LINKEDIN_OAUTH_COMPLETED`, `LINKEDIN_OAUTH_REJECTED`, `LINKEDIN_CONNECTION_DISCONNECTED`, `DRAFT_APPROVED`, `PUBLICATION_COMPLETED`, `PUBLICATION_FAILED`); implementação de `DataRetentionService` para expurgo de `oauth_transaction` expiradas/consumidas (>24h) e exclusão local de conta/tokens com anonimização de auditoria (`USER_DATA_DELETED`); filtro `RequestCorrelationFilter` (`X-Request-Id` validado contra CRLF + MDC `requestId`), cabeçalhos `Referrer-Policy: no-referrer` e `Permissions-Policy`, logs operacionais estruturados com `latencyMs` sem tokens/texto sensível e handler fallback sanitizado (`500 INTERNAL_ERROR`) em `GlobalExceptionHandler`; suíte expandida para **98 testes em 20 classes**. Validações em Oracle descartável (`PUB-04`, `DB-01`), Redis distribuído real (`RATE-02`) e scans de pipeline/DAST permanecem documentadas como pendências de infraestrutura externa.
 
 ### Passo 15 — Dockerizar e documentar a execução
-**Status:** **concluído em 16/11/2026** — ver [`docs/progress/STEP-15.md`](progress/STEP-15.md).
-**Entregue:** [`Dockerfile`](../Dockerfile) multi-stage (`maven:3.9.9-eclipse-temurin-21` -> `eclipse-temurin:21-jre`) executando com usuário não-root (`appuser`, UID 10001), diretório `/app/data` preparado para volume SQLite e `HEALTHCHECK` em `/actuator/health`; [`.dockerignore`](../.dockerignore) isolando `.env`, chaves e bancos locais da imagem; [`docker-compose.yml`](../docker-compose.yml) com suporte ao perfil `local` (volume SQLite) e profile opcional `prod-local` (Redis); carregamento nativo de `.env` no bootstrap (`LinkedinAgentApplication.loadDotEnvIfPresent()`) compatível com Spring Boot 4.1.2; e documentação consolidada dos Passos 1 a 15 em `STEP-15.md` e `README.md`.
+**Status:** **concluído em 16/11/2026** (com extensão de agendamento em **24/11/2026** — ver [`docs/progress/STEP-15.md`](progress/STEP-15.md) e [`docs/progress/STEP-15b.md`](progress/STEP-15b.md)).
+**Entregue:** [`Dockerfile`](../Dockerfile) multi-stage (`maven:3.9.9-eclipse-temurin-21` -> `eclipse-temurin:21-jre`) executando com usuário não-root (`appuser`, UID 10001), diretório `/app/data` preparado para volume SQLite e `HEALTHCHECK` em `/actuator/health`; [`.dockerignore`](../.dockerignore) isolando `.env`, chaves e bancos locais da imagem; [`docker-compose.yml`](../docker-compose.yml) com suporte ao perfil `local` (volume SQLite) e profile opcional `redis-local` (Redis em loopback); carregamento nativo de `.env` no bootstrap (`LinkedinAgentApplication.loadDotEnvIfPresent()`) compatível com Spring Boot 4.1.2; e agendamento automático de publicações na aprovação/reagendamento de drafts (`V3__Add_draft_scheduling.sql`, `ScheduledPublicationService`, janela `PT60M`).
 
-### Passo 16 — Revisão de portfólio e CI/CD, e validar migração experimental para PostgreSQL
-**Plano:** corrigir o título/escopo após confirmação do banco-alvo. Como o perfil atual é Oracle e as dependências incluem PostgreSQL, decidir se PostgreSQL é um segundo destino suportado ou dependência a remover; adicionar pipeline e validação apenas para destinos formalmente suportados. Não declarar portabilidade multibanco sem migrations e testes por banco.
+### Passo 16 — Revisão de portfólio e CI/CD (banco de produção Oracle consolidado)
+**Status:** **concluído em 24/11/2026** — ver [`docs/progress/STEP-16.md`](progress/STEP-16.md).
+**Entregue:** consolidação formal do **Oracle** como único banco de produção suportado na v1 (com PostgreSQL removido do `pom.xml` e `ProdProfileOracleRedisIntegrationTest` cobrindo migrations Oracle `V1`–`V3`, Redis e concorrência multi-thread via Testcontainers, complementado por `PublicationConcurrencyIntegrationTest` em SQLite); endurecimento do workflow [`.github/workflows/security-ci.yml`](../.github/workflows/security-ci.yml) (cancelamento de concorrência em PRs, cache condicional NVD, smoke test Docker validando `/actuator/health` + `/api-docs` + ausência de segredos na imagem, Gitleaks e CodeQL); revisão de governança (`LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, runbook de reconciliação); e atualização do `README.md` de portfólio com diagramas Mermaid de arquitetura e sequência, exemplos `curl` sanitizados e documentação de CI/CD.
 
 ### Plano proposto para a próxima release
 
